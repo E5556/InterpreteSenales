@@ -1,0 +1,8 @@
+.vscode
+.test
+__pycache__
+tmp
+# samples
+
+.old
+venv
