@@ -74,7 +74,9 @@ class SessionsWindow(QWidget):
         selected_items = self.sessions_list.selectedItems()
         if not selected_items:
             QMessageBox.warning(self, "Selección Requerida", "Por favor, selecciona una sesión para eliminar.")
-            return
+            return 
+
+
 
         session_id = selected_items[0].data(Qt.UserRole)
         timestamp = selected_items[0].text()
