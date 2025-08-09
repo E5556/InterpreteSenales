@@ -40,22 +40,24 @@ class LoginWindow(QWidget):
         self.login_button.clicked.connect(self.handle_login)
         self.register_button.clicked.connect(self.handle_register)
 
-    def handle_login(self):
-        username = self.username_input.text()
-        password = self.password_input.text()
+def handle_login(self):
+    username = self.username_input.text()
+    password = self.password_input.text()
 
-        if not username or not password:
-            QMessageBox.warning(self, "Error", "Por favor, ingresa usuario y contraseña.")
-            return
+    if not username or not password:
+        QMessageBox.warning(self, "Error", "Por favor, ingresa usuario y contraseña.")
+        return
 
-        user_id = check_user(username, password)
-        if user_id:
-            QMessageBox.information(self, "Éxito", f"¡Bienvenido, {username}!")
-            if self.controller:
-                self.controller.show_sessions_window(user_id) # Llama a la nueva función
+    login_result = check_user(username, password)
+    if login_result:
+        user_id, role, must_change_password = login_result
+        QMessageBox.information(self, "Éxito", f"¡Bienvenido, {username}!")
+        if self.controller:
+            self.hide()
+            self.controller.handle_successful_login(user_id, role, must_change_password)
             self.close()
-        else:
-            QMessageBox.warning(self, "Error", "Usuario o contraseña incorrectos.")
+    else:
+        QMessageBox.warning(self, "Error", "Usuario o contraseña incorrectos.")
             
     def handle_register(self):
         username = self.username_input.text()

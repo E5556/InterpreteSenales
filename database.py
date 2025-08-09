@@ -61,22 +61,18 @@ def add_user(username, password):
     return True
 
 def check_user(username, password):
-    """Verifica si el usuario y la contraseña son correctos. 
-    Retorna el ID del usuario si son correctos, None en caso contrario."""
+    """Verifica si el usuario y la contraseña son correctos.
+    Retorna (user_id, role, must_change_password) si son correctos, None en caso contrario."""
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
-    
-    cursor.execute("SELECT id, password_hash FROM users WHERE username = ?", (username,))
-    result = cursor.fetchone()
-    
+    cursor.execute("SELECT id, password_hash, role, must_change_password FROM users WHERE username = ?", (username,))
+    row = cursor.fetchone()
     conn.close()
-    
-    if result:
-        user_id, stored_password_hash = result
-        input_password_hash = hash_password(password)
-        if stored_password_hash == input_password_hash:
-            return user_id
-        
+    if not row:
+        return None
+    user_id, stored_hash, role, must_change = row
+    if hash_password(password) == stored_hash:
+        return user_id, role, bool(must_change)
     return None
 
 def create_session(user_id):

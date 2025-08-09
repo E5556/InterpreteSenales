@@ -5,10 +5,11 @@ from PyQt5.QtCore import Qt
 from database import get_user_sessions
 
 class SessionsWindow(QWidget):
-    def __init__(self, user_id, controller):
+    def __init__(self, user_id, controller, is_admin_mode=False):
         super().__init__()
-        self.user_id = user_id
+        self.user_id = int(user_id)   # <- importante
         self.controller = controller
+        self.is_admin_mode = is_admin_mode
         
         self.setWindowTitle("Historial de Sesiones")
         self.setGeometry(300, 300, 500, 400)
