@@ -2,19 +2,21 @@ import os
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-from helpers import get_word_ids, get_sequences_and_labels
+from helpers import get_sequences_and_labels
 from constants import *
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 from keras.models import load_model
-from helpers import get_word_ids, get_sequences_and_labels
+from helpers import get_sequences_and_labels
 from constants import *
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 
 
 def generate_confusion_matrix():
-    word_ids = get_word_ids(KEYPOINTS_PATH)
+    # Usar detección automática desde training_utils
+    from training_utils import get_gestures_with_samples
+    word_ids = get_gestures_with_samples()
     test_sequences, test_labels = [], []
 
     for model_num in MODEL_NUMS:

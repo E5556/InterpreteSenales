@@ -14,7 +14,7 @@ Este es un modelo de una red neuronal que traduce Lengua de Señas colombiana (L
 - helpers.py → funciones que se utilizan en los scripts principales.
 
 ## Pasos para probar la red neuronal
-1. Capturar las muestras con capture_samples.py
+1. Ccapturar las muestras con capture_samples.py
 2. Normalizar las muestras con normalize_samples.py
 2. Generar los .h5 (keypoints) de cada palabra con create_keypoints.py
 3. Entrenar el modelo con training_model.py

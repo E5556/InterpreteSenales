@@ -8,14 +8,15 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.utils import to_categorical
-from helpers import get_word_ids, get_sequences_and_labels
+from helpers import get_sequences_and_labels
 from constants import *
 
 def training_model(model_path, epochs=500):
     try:
-        print("Cargando IDs de palabras...")
-        word_ids = get_word_ids(WORDS_JSON_PATH)
-        print(f"IDs de palabras cargados: {word_ids}")
+        print("Detectando gestos automáticamente...")
+        from training_utils import get_gestures_with_samples
+        word_ids = get_gestures_with_samples()
+        print(f"Gestos detectados: {word_ids}")
 
         print("Obteniendo secuencias y etiquetas...")
         sequences, labels = get_sequences_and_labels(word_ids)

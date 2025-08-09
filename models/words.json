@@ -1,18 +1,17 @@
 {
     "word_ids": [
-        "bienvenido",
-        "hola",
-        "buenos_dias",
-        "buenas_tardes",
-        "buenas_noches",
         "abrazar",
+        "adios",
+        "adulto",
+        "bienvenido",
+        "buenas_noches",
+        "buenas_tardes",
+        "buenos_dias",
         "como_esta",
         "con_mucho_gusto",
-        "adulto",
-        "adios",
-        "felicitaciones",
-        "perdon"
-       
+        "felicitacion",
+        "hola",
+        "perdon",
+        "por_favor"
     ]
 }
-
