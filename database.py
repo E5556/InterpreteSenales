@@ -5,7 +5,8 @@ from datetime import datetime
 DATABASE_NAME = "usuarios.db"
 
 def init_db():
-    """Inicializa la base de datos y crea las tablas si no existen."""
+    """Inicializa la ba+
+    se de datos y crea las tablas si no existen."""
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     # Tabla de usuarios
@@ -13,7 +14,17 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL
+            password_hash TEXT NOT NULL,
+            first_name TEXT,
+            last_name TEXT,
+            email TEXT,
+            birth_date TEXT,
+            birth_country TEXT,
+            birth_city TEXT,
+            residence_country TEXT,
+            residence_city TEXT,
+            role TEXT NOT NULL DEFAULT 'user',
+            must_change_password INTEGER NOT NULL DEFAULT 0
         )
     """)
     # Tabla de sesiones
@@ -35,6 +46,17 @@ def init_db():
             FOREIGN KEY (session_id) REFERENCES sessions (id)
         )
     """)
+    # Verificar si el usuario admin existe
+    cursor.execute("SELECT * FROM users WHERE username = 'admin'")
+    if not cursor.fetchone():
+        # Si no existe, lo creamos
+        admin_pass_hash = hash_password("admin")
+        cursor.execute("""
+            INSERT INTO users (username, password_hash, role, must_change_password)
+            VALUES ('admin', ?, 'admin', 1)
+        """, (admin_pass_hash,))
+        print("Usuario 'admin' creado con contraseña 'admin'. Se requerirá cambio.")
+
     conn.commit()
     conn.close()
 
@@ -42,38 +64,126 @@ def hash_password(password):
     """Hashea la contraseña usando SHA-256."""
     return hashlib.sha256(password.encode('utf-8')).hexdigest()
 
-def add_user(username, password):
-    """Agrega un nuevo usuario a la base de datos. Retorna True si fue exitoso, False si el usuario ya existe."""
+def add_user(username, password, first_name, last_name, email, birth_date, birth_country, birth_city, residence_country, residence_city):
+    """Agrega un nuevo usuario con todos sus datos a la base de datos."""
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     
-    # Verificar si el usuario ya existe
-    cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+    # Verificar si el usuario o el email ya existen
+    cursor.execute("SELECT * FROM users WHERE username = ? OR email = ?", (username, email))
     if cursor.fetchone():
         conn.close()
-        return False  # El usuario ya existe
+        return False  # El usuario o email ya existe
 
     # Si no existe, agregarlo
     password_hash = hash_password(password)
-    cursor.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (username, password_hash))
+    cursor.execute("""
+        INSERT INTO users (username, password_hash, first_name, last_name, email, 
+                         birth_date, birth_country, birth_city, residence_country, residence_city)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (username, password_hash, first_name, last_name, email, 
+          birth_date, birth_country, birth_city, residence_country, residence_city))
     conn.commit()
     conn.close()
     return True
 
 def check_user(username, password):
-    """Verifica si el usuario y la contraseña son correctos.
+    """Verifica si el usuario y la contraseña son correctos. 
     Retorna (user_id, role, must_change_password) si son correctos, None en caso contrario."""
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
+    
     cursor.execute("SELECT id, password_hash, role, must_change_password FROM users WHERE username = ?", (username,))
-    row = cursor.fetchone()
+    result = cursor.fetchone()
+    
     conn.close()
-    if not row:
-        return None
-    user_id, stored_hash, role, must_change = row
-    if hash_password(password) == stored_hash:
-        return user_id, role, bool(must_change)
+    
+    if result:
+        user_id, stored_password_hash, role, must_change = result
+        input_password_hash = hash_password(password)
+        if stored_password_hash == input_password_hash:
+            return user_id, role, bool(must_change)
+        
     return None
+
+def update_user_password(user_id, new_password):
+    """Actualiza la contraseña de un usuario y desactiva el flag de cambio."""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    new_password_hash = hash_password(new_password)
+    cursor.execute("""
+        UPDATE users 
+        SET password_hash = ?, must_change_password = 0
+        WHERE id = ?
+    """, (new_password_hash, user_id))
+    conn.commit()
+    conn.close()
+
+# --- Funciones de Administrador ---
+
+def get_all_users():
+    """Retorna una lista de todos los usuarios (sin la contraseña)."""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, first_name, last_name, email, role FROM users ORDER BY username")
+    users = cursor.fetchall()
+    conn.close()
+    return users
+
+def get_user_details_by_id(user_id):
+    """Obtiene todos los detalles de un usuario por su ID."""
+    conn = sqlite3.connect(DATABASE_NAME)
+    conn.row_factory = sqlite3.Row # Para poder acceder a los datos por nombre de columna
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    user = cursor.fetchone()
+    conn.close()
+    return dict(user) if user else None
+
+def update_user_details(user_id, username, first_name, last_name, email, role):
+    """Actualiza los detalles de un usuario (versión del admin, sin cambiar contraseña)."""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            UPDATE users
+            SET username = ?, first_name = ?, last_name = ?, email = ?, role = ?
+            WHERE id = ?
+        """, (username, first_name, last_name, email, role, user_id))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError: # Ocurre si el username o email ya existen
+        return False
+    finally:
+        conn.close()
+
+def delete_user(user_id):
+    """Elimina un usuario y todos sus datos asociados (sesiones, interpretaciones)."""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    # Primero, obtener todas las sesiones del usuario
+    cursor.execute("SELECT id FROM sessions WHERE user_id = ?", (user_id,))
+    session_ids = [row[0] for row in cursor.fetchall()]
+    
+    if session_ids:
+        # Eliminar interpretaciones de esas sesiones
+        cursor.execute(f"DELETE FROM interpretations WHERE session_id IN ({','.join('?' for _ in session_ids)})", session_ids)
+        # Eliminar las sesiones
+        cursor.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+    
+    # Finalmente, eliminar al usuario
+    cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+def delete_session(session_id):
+    """Elimina una sesión y sus interpretaciones asociadas."""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM interpretations WHERE session_id = ?", (session_id,))
+    cursor.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+    conn.commit()
+    conn.close()
 
 def create_session(user_id):
     """Crea una nueva sesión para un usuario y retorna el ID de la sesión."""
@@ -111,26 +221,13 @@ def get_session_interpretations(session_id):
     conn.close()
     return interpretations
 
+# Las funciones de gestión de gestos complejas han sido eliminadas.
+# Ahora se usa detección automática directa en training_utils.py
+
 if __name__ == '__main__':
     # Esto se ejecutará solo cuando corras 'python database.py' directamente
     # Es útil para inicializar la base de datos por primera vez.
     print("Inicializando la base de datos...")
     init_db()
     print("Base de datos lista.")
-
-    # Ejemplo de cómo agregar un usuario (puedes descomentar para probar)
-    # if add_user("testuser", "password123"):
-    #     print("Usuario 'testuser' agregado exitosamente.")
-    # else:
-    #     print("El usuario 'testuser' ya existía.")
-
-    # Ejemplo de cómo verificar un usuario
-    # user_id = check_user('testuser', 'password123')
-    # print(f"Verificando 'testuser' con 'password123'. ID de usuario: {user_id}")
-    
-    # if user_id:
-    #     new_session_id = create_session(user_id)
-    #     print(f"Nueva sesión creada con ID: {new_session_id}")
-    #     add_interpretation(new_session_id, "HOLA")
-    #     add_interpretation(new_session_id, "MUNDO")
-    #     print("Interpretaciones agregadas.") 
+    # El código de ejemplo para agregar usuario ya no es válido, lo eliminamos. 

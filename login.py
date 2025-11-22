@@ -1,12 +1,14 @@
 import sys
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QLineEdit, QPushButton, QMessageBox)
-from database import add_user, check_user
+from database import check_user
+from user_form_window import UserFormWindow # Cambiado de register_window
 
 class LoginWindow(QWidget):
     def __init__(self, controller=None):
         super().__init__()
         self.controller = controller
+        self.user_form_win = None # Cambiado de register_win
         self.setWindowTitle("Inicio de Sesión")
         self.setGeometry(400, 400, 400, 200)
         
@@ -38,7 +40,7 @@ class LoginWindow(QWidget):
         
         # Conectar señales
         self.login_button.clicked.connect(self.handle_login)
-        self.register_button.clicked.connect(self.handle_register)
+        self.register_button.clicked.connect(self.handle_register_show)
 
 def handle_login(self):
     username = self.username_input.text()
@@ -48,29 +50,22 @@ def handle_login(self):
         QMessageBox.warning(self, "Error", "Por favor, ingresa usuario y contraseña.")
         return
 
-    login_result = check_user(username, password)
-    if login_result:
-        user_id, role, must_change_password = login_result
-        QMessageBox.information(self, "Éxito", f"¡Bienvenido, {username}!")
-        if self.controller:
-            self.hide()
-            self.controller.handle_successful_login(user_id, role, must_change_password)
-            self.close()
-    else:
-        QMessageBox.warning(self, "Error", "Usuario o contraseña incorrectos.")
-            
-    def handle_register(self):
-        username = self.username_input.text()
-        password = self.password_input.text()
-
-        if not username or not password:
-            QMessageBox.warning(self, "Error", "Por favor, ingresa usuario y contraseña para registrarte.")
-            return
-
-        if add_user(username, password):
-            QMessageBox.information(self, "Éxito", "Usuario registrado correctamente. Ahora puedes iniciar sesión.")
+        login_result = check_user(username, password)
+        if login_result:
+            user_id, role, must_change_password = login_result
+            QMessageBox.information(self, "Éxito", f"¡Bienvenido, {username}!")
+            if self.controller:
+                # Ocultar login antes de abrir nueva ventana principal
+                self.hide()
+                self.controller.handle_successful_login(user_id, role, must_change_password)
+                # Cerrar login después de que la nueva ventana esté establecida
+                self.close()
         else:
-            QMessageBox.warning(self, "Error", "El nombre de usuario ya existe.")
+            QMessageBox.warning(self, "Error", "Usuario o contraseña incorrectos.")
+            
+    def handle_register_show(self):
+        self.user_form_win = UserFormWindow() # Cambiado de RegisterWindow
+        self.user_form_win.show()
 
 # Esto es para probar la ventana de forma independiente
 if __name__ == '__main__':

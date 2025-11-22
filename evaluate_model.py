@@ -44,7 +44,9 @@ def normalize_keypoints(keypoints, target_length=15):
 
 def evaluate_model(src=None, threshold=0.6, margin_frame=1, delay_frames=3):
     kp_seq, sentence = [], []
-    word_ids = get_word_ids(WORDS_JSON_PATH)
+    # Usar detección automática desde training_utils
+    from training_utils import get_gestures_with_samples, extract_keypoints
+    word_ids = get_gestures_with_samples()
     model = load_model(MODEL_PATH)
     count_frame = 0
     fix_frames = 0
@@ -79,8 +81,8 @@ def evaluate_model(src=None, threshold=0.6, margin_frame=1, delay_frames=3):
                     print(np.argmax(res), f"({res[np.argmax(res)] * 100:.2f}%)")
                     if res[np.argmax(res)] > threshold:
                         word_id = word_ids[np.argmax(res)].split('-')[0]
-
-                        sent = words_text.get(word_id)
+                        from constants import get_display_text
+                        sent = get_display_text(word_id)
                         if sent:  # Añadir verificación aquí
                             sentence.insert(0, sent)
                             text_to_speech(sent)  # ONLY LOCAL (NO SERVER)

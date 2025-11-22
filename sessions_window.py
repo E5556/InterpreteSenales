@@ -2,7 +2,7 @@ import sys
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, 
                              QListWidget, QListWidgetItem, QMessageBox, QHBoxLayout)
 from PyQt5.QtCore import Qt
-from database import get_user_sessions
+from database import get_user_sessions, delete_session
 
 class SessionsWindow(QWidget):
     def __init__(self, user_id, controller, is_admin_mode=False):
@@ -14,18 +14,31 @@ class SessionsWindow(QWidget):
         self.setWindowTitle("Historial de Sesiones")
         self.setGeometry(300, 300, 500, 400)
         
+        # SessionsWindow ES una ventana principal - puede cerrar la aplicación
+        
         layout = QVBoxLayout(self)
         
         self.sessions_list = QListWidget(self)
         self.populate_sessions()
         
+        # Botones
+        button_layout = QHBoxLayout()
         self.new_session_button = QPushButton("Iniciar Nueva Sesión", self)
         self.logout_button = QPushButton("Cerrar Sesión", self)
-        
-        button_layout = QHBoxLayout()
-        button_layout.addWidget(self.new_session_button)
-        button_layout.addWidget(self.logout_button)
+        self.delete_session_button = QPushButton("Eliminar Sesión Seleccionada", self)
 
+        # Lógica de visibilidad
+        if self.is_admin_mode:
+            self.new_session_button.hide() # El admin no inicia sesiones para otros
+            self.logout_button.hide()
+        else:
+            self.delete_session_button.hide()
+
+        button_layout.addWidget(self.new_session_button)
+        button_layout.addWidget(self.delete_session_button)
+        button_layout.addStretch()
+        button_layout.addWidget(self.logout_button)
+        
         layout.addWidget(self.sessions_list)
         layout.addLayout(button_layout)
         
@@ -33,6 +46,7 @@ class SessionsWindow(QWidget):
         self.new_session_button.clicked.connect(self.start_new_session)
         self.logout_button.clicked.connect(self.logout)
         self.sessions_list.itemClicked.connect(self.view_session_history)
+        self.delete_session_button.clicked.connect(self.handle_delete_session)
 
     def populate_sessions(self):
         self.sessions_list.clear()
@@ -56,6 +70,26 @@ class SessionsWindow(QWidget):
             self.controller.show_history_window(session_id)
             self.close()
 
+    def handle_delete_session(self):
+        selected_items = self.sessions_list.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "Selección Requerida", "Por favor, selecciona una sesión para eliminar.")
+            return 
+
+
+
+        session_id = selected_items[0].data(Qt.UserRole)
+        timestamp = selected_items[0].text()
+
+        reply = QMessageBox.question(self, "Confirmar Eliminación", 
+                                     f"¿Estás seguro de que quieres eliminar esta sesión?\n({timestamp})\n¡Esta acción es irreversible!",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+
+        if reply == QMessageBox.Yes:
+            delete_session(session_id)
+            QMessageBox.information(self, "Éxito", "Sesión eliminada correctamente.")
+            self.populate_sessions() # Refrescar la lista
+            
     def logout(self):
         self.controller.logout()
         self.close()
