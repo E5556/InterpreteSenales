@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 from mediapipe.python.solutions.holistic import Holistic
 from helpers import create_folder, draw_keypoints, mediapipe_detection, save_frames, there_hand
-from constants import FONT, FONT_POS, FONT_SIZE, FRAME_ACTIONS_PATH, ROOT_PATH
+from constants import FONT, FONT_POS, FONT_SIZE, FRAME_ACTIONS_PATH, ROOT_PATH, CAMERA_INDEX
 from datetime import datetime
 
 
@@ -25,7 +25,7 @@ def capture_samples(path, margin_frame=1, min_cant_frames=5, delay_frames=3):
     recording = False
     
     with Holistic() as holistic_model:
-        video = cv2.VideoCapture(1)
+        video = cv2.VideoCapture(CAMERA_INDEX)
         
         while video.isOpened():
             ret, frame = video.read()

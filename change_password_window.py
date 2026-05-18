@@ -1,6 +1,8 @@
 import sys
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, 
                              QLabel, QLineEdit, QPushButton, QMessageBox)
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon, QPixmap
 from database import update_user_password
 
 class ChangePasswordWindow(QWidget):
@@ -9,17 +11,25 @@ class ChangePasswordWindow(QWidget):
         self.user_id = user_id
         self.controller = controller
         
-        self.setWindowTitle("Cambio de Contraseña Obligatorio")
-        self.setGeometry(400, 400, 400, 200)
+        self.setWindowTitle("🔒 Intérprete LSC - Cambio de Contraseña Obligatorio")
+        self.setGeometry(400, 400, 450, 250)
+        
+        # Configurar icono de la ventana
+        self.setWindowIcon(self.create_password_icon())
         
         layout = QVBoxLayout(self)
         
         self.new_password_input = QLineEdit(echoMode=QLineEdit.Password, placeholderText="Nueva Contraseña")
         self.confirm_password_input = QLineEdit(echoMode=QLineEdit.Password, placeholderText="Confirmar Nueva Contraseña")
-        self.change_button = QPushButton("Cambiar Contraseña", self)
+        self.change_button = QPushButton("🔒 Cambiar Contraseña", self)
         
-        layout.addWidget(QLabel("<h2>Debe cambiar su contraseña</h2>"))
-        layout.addWidget(QLabel("Por seguridad, es necesario que establezca una nueva contraseña."))
+        title_label = QLabel("<h2>🔒 Cambio de Contraseña Obligatorio</h2>")
+        title_label.setAlignment(Qt.AlignCenter)
+        subtitle_label = QLabel("🛡️ Por seguridad, es necesario que establezca una nueva contraseña.")
+        subtitle_label.setAlignment(Qt.AlignCenter)
+        
+        layout.addWidget(title_label)
+        layout.addWidget(subtitle_label)
         layout.addWidget(self.new_password_input)
         layout.addWidget(self.confirm_password_input)
         layout.addWidget(self.change_button)
@@ -44,6 +54,13 @@ class ChangePasswordWindow(QWidget):
         QMessageBox.information(self, "Éxito", "Contraseña actualizada correctamente. Por favor, inicie sesión de nuevo.")
         self.controller.logout() # Forzamos logout para que reingrese con la nueva pass
         self.close()
+
+    def create_password_icon(self):
+        """Crear icono para la ventana de cambio de contraseña"""
+        # Crear un icono simple usando texto/emoji
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.transparent)
+        return QIcon(pixmap)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

@@ -20,6 +20,4 @@ Este es un modelo de una red neuronal que traduce Lengua de Señas colombiana (L
 3. Entrenar el modelo con training_model.py
 4. Realizar pruebas con evaluate_model.py
 
-## Video de la explicación del código:
-https://youtu.be/3EK0TxfoAMk
-Nota: Pronto subiré otro video explicando las mejoras.
+

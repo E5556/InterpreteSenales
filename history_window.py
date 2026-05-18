@@ -2,7 +2,8 @@ import sys
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QListWidget, QListWidgetItem, QLabel, QPushButton)
 from PyQt5.QtCore import Qt
-from database import get_session_interpretations, DATABASE_NAME
+from PyQt5.QtGui import QIcon, QPixmap
+from database import get_session_interpretations, get_database_name
 import sqlite3
 
 class HistoryWindow(QWidget):
@@ -12,26 +13,30 @@ class HistoryWindow(QWidget):
         self.controller = controller
         
         # Necesitamos saber quién es el usuario para poder volver.
-        conn = sqlite3.connect(DATABASE_NAME)
+        conn = sqlite3.connect(get_database_name())
         cursor = conn.cursor()
         cursor.execute("SELECT user_id FROM sessions WHERE id = ?", (session_id,))
         result = cursor.fetchone()
         self.user_id = result[0] if result else None
         conn.close()
         
-        self.setWindowTitle(f"Historial de la Sesión #{session_id}")
-        self.setGeometry(400, 400, 500, 400)
+        self.setWindowTitle(f"📜 Intérprete LSC - Historial de Sesión #{session_id}")
+        self.setGeometry(400, 400, 600, 500)
+        
+        # Configurar icono de la ventana
+        self.setWindowIcon(self.create_history_icon())
         
         layout = QVBoxLayout(self)
         
-        title_label = QLabel(f"<h2>Interpretaciones de la Sesión #{session_id}</h2>")
+        title_label = QLabel(f"<h2>📜 Interpretaciones de la Sesión #{session_id}</h2>")
+        title_label.setAlignment(Qt.AlignCenter)
         self.interpretations_list = QListWidget(self)
         self.populate_interpretations()
         
         # Botones de navegación
         button_layout = QHBoxLayout()
-        self.back_button = QPushButton("Volver al Menú de Sesiones", self)
-        self.logout_button = QPushButton("Cerrar Sesión", self)
+        self.back_button = QPushButton("🔙 Volver al Menú de Sesiones", self)
+        self.logout_button = QPushButton("🚪 Cerrar Sesión", self)
         button_layout.addWidget(self.back_button)
         button_layout.addWidget(self.logout_button)
         
@@ -63,6 +68,13 @@ class HistoryWindow(QWidget):
         self.controller.logout()
         self.close()
 
+    def create_history_icon(self):
+        """Crear icono para la ventana de historial"""
+        # Crear un icono simple usando texto/emoji
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.transparent)
+        return QIcon(pixmap)
+
 # Para probar la ventana de forma independiente
 if __name__ == '__main__':
     app = QApplication(sys.argv)
@@ -70,7 +82,6 @@ if __name__ == '__main__':
     # Necesitamos datos de prueba para ver algo
     from database import init_db, add_user, check_user, create_session, add_interpretation
     import sqlite3 # Necesario para la prueba
-    DATABASE_NAME = "usuarios.db" # Necesario para la prueba
 
     class MockController:
         def go_back_to_sessions(self, user_id):

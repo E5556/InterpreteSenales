@@ -88,7 +88,10 @@ def read_frames_from_directory(directory):
                 frames.append(frame)
     return frames
 
-def interpolate_frames(frames, target_frame_count=15):
+def interpolate_frames(frames, target_frame_count=None):
+    if target_frame_count is None:
+        from constants import MODEL_FRAMES
+        target_frame_count = MODEL_FRAMES
     """Interpolar frames para alcanzar el conteo deseado"""
     current_frame_count = len(frames)
     indices = np.linspace(0, current_frame_count - 1, target_frame_count)
@@ -107,7 +110,10 @@ def interpolate_frames(frames, target_frame_count=15):
 
     return interpolated_frames
 
-def normalize_frames(frames, target_frame_count=15):
+def normalize_frames(frames, target_frame_count=None):
+    if target_frame_count is None:
+        from constants import MODEL_FRAMES
+        target_frame_count = MODEL_FRAMES
     """Normalizar el número de frames manteniendo orden"""
     current_frame_count = len(frames)
     if current_frame_count < target_frame_count:
@@ -138,7 +144,10 @@ def clear_directory(directory):
         except Exception as e:
             print(f"Error al eliminar {file_path}: {e}")
 
-def normalize_gesture_samples(gesture_name, target_frame_count=15, progress_callback=None):
+def normalize_gesture_samples(gesture_name, target_frame_count=None, progress_callback=None):
+    if target_frame_count is None:
+        from constants import MODEL_FRAMES
+        target_frame_count = MODEL_FRAMES
     """Normalizar muestras de un gesto específico"""
     gesture_path = os.path.join(FRAME_ACTIONS_PATH, gesture_name)
     
@@ -459,13 +468,13 @@ def get_gestures_with_valid_keypoints():
                 if not data.empty:
                     valid_gestures.append(gesture)
                 else:
-                    print(f"⚠️ Saltando '{gesture}': archivo keypoints vacío")
+                    print(f"[WARNING] Saltando '{gesture}': archivo keypoints vacío")
             except Exception as e:
-                print(f"⚠️ Saltando '{gesture}': error en keypoints - {e}")
+                print(f"[WARNING] Saltando '{gesture}': error en keypoints - {e}")
         else:
-            print(f"⚠️ Saltando '{gesture}': no tiene keypoints generados")
+            print(f"[WARNING] Saltando '{gesture}': no tiene keypoints generados")
     
-    print(f"✅ Gestos válidos para entrenamiento: {len(valid_gestures)}/{len(gestures_with_samples)}")
+    print(f"[OK] Gestos válidos para entrenamiento: {len(valid_gestures)}/{len(gestures_with_samples)}")
     return valid_gestures
 
 def train_model_logic(epochs=500, epoch_callback=None):

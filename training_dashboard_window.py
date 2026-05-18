@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QSpinBox, QTextEdit, QScrollArea,
                              QMessageBox, QProgressBar)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtGui import QPixmap, QIcon
 from training_utils import (create_keypoints_for_all_gestures, normalize_and_create_keypoints,
                             train_model_logic, plot_training_history, generate_confusion_matrix_logic)
 import os
@@ -57,24 +57,78 @@ class TrainingDashboardWindow(QWidget):
     def __init__(self, controller):
         super().__init__()
         self.controller = controller
-        self.setWindowTitle("Panel de Entrenamiento del Modelo")
-        self.setGeometry(300, 300, 1200, 900)  # Ventana más grande para las imágenes
+        self.setWindowTitle("🧠 Intérprete LSC - Panel de Entrenamiento del Modelo")
+        self.setGeometry(300, 300, 1300, 950)  # Ventana más grande para las imágenes
         self.thread = None
+        
+        # Configurar icono de la ventana
+        self.setWindowIcon(self.create_training_icon())
         
         # Asegurar que esta ventana no termine la aplicación al cerrarse
         self.setAttribute(Qt.WA_QuitOnClose, False)
 
         # --- Layouts y Widgets ---
         main_layout = QVBoxLayout(self)
+        
+        # Título del panel
+        title_label = QLabel("<h2>🧠 Panel de Entrenamiento del Modelo LSC</h2>")
+        title_label.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(title_label)
+        
+        # Crear área de scroll para el contenido principal
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setMinimumHeight(400)  # Altura mínima para el área de scroll
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: 1px solid #ccc;
+                background-color: white;
+            }
+            QScrollBar:vertical {
+                background-color: #f0f0f0;
+                width: 12px;
+                border-radius: 6px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #c0c0c0;
+                border-radius: 6px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #a0a0a0;
+            }
+            QScrollBar:horizontal {
+                background-color: #f0f0f0;
+                height: 12px;
+                border-radius: 6px;
+            }
+            QScrollBar::handle:horizontal {
+                background-color: #c0c0c0;
+                border-radius: 6px;
+                min-width: 20px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background-color: #a0a0a0;
+            }
+        """)
+        
+        # Widget contenedor para el contenido scrolleable
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setSpacing(15)  # Espaciado entre elementos
+        scroll_layout.setContentsMargins(10, 10, 10, 10)  # Márgenes internos
+        
         top_controls_layout = QHBoxLayout()
         
         # Controles de entrenamiento
         self.epochs_input = QSpinBox()
         self.epochs_input.setRange(1, 2000)
         self.epochs_input.setValue(500)
-        self.process_keypoints_button = QPushButton("1. Normalizar + Procesar Keypoints")
+        self.process_keypoints_button = QPushButton("⚙️ 1. Normalizar + Procesar Keypoints")
         self.process_keypoints_button.setToolTip("Flujo completo: Normaliza muestras a 15 frames y crea keypoints")
-        self.train_button = QPushButton("2. Iniciar Entrenamiento")
+        self.train_button = QPushButton("🚀 2. Iniciar Entrenamiento")
         
         top_controls_layout.addWidget(QLabel("Épocas de Entrenamiento:"))
         top_controls_layout.addWidget(self.epochs_input)
@@ -85,6 +139,7 @@ class TrainingDashboardWindow(QWidget):
         self.progress_bar = QProgressBar()
         self.log_area = QTextEdit()
         self.log_area.setReadOnly(True)
+        self.log_area.setMinimumHeight(200)  # Altura mínima para el área de logs
         
         # Visor de Gráficas
         self.history_plot_label = QLabel("La gráfica del historial de entrenamiento aparecerá aquí.")
@@ -97,14 +152,34 @@ class TrainingDashboardWindow(QWidget):
         self.matrix_plot_label.setMinimumSize(600, 600)  # Tamaño mínimo más grande para matriz cuadrada
         self.matrix_plot_label.setStyleSheet("QLabel { border: 2px solid #ccc; background-color: #f9f9f9; }")
         
-        self.show_matrix_button = QPushButton("Mostrar Matriz de Confusión (Post-Entrenamiento)")
+        self.show_matrix_button = QPushButton("📊 Mostrar Matriz de Confusión (Post-Entrenamiento)")
 
-        main_layout.addLayout(top_controls_layout)
-        main_layout.addWidget(self.progress_bar)
-        main_layout.addWidget(self.log_area)
-        main_layout.addWidget(self.history_plot_label)
-        main_layout.addWidget(self.matrix_plot_label)
-        main_layout.addWidget(self.show_matrix_button)
+        # Añadir elementos al layout de scroll con separadores
+        scroll_layout.addLayout(top_controls_layout)
+        scroll_layout.addWidget(self.progress_bar)
+        
+        # Separador visual para el área de logs
+        logs_label = QLabel("<h3>📝 Logs de Procesamiento</h3>")
+        logs_label.setStyleSheet("color: #333; margin-top: 10px;")
+        scroll_layout.addWidget(logs_label)
+        scroll_layout.addWidget(self.log_area)
+        
+        # Separador visual para las gráficas
+        graphs_label = QLabel("<h3>📊 Gráficas de Entrenamiento</h3>")
+        graphs_label.setStyleSheet("color: #333; margin-top: 10px;")
+        scroll_layout.addWidget(graphs_label)
+        scroll_layout.addWidget(self.history_plot_label)
+        
+        # Separador visual para la matriz de confusión
+        matrix_label = QLabel("<h3>🎯 Matriz de Confusión</h3>")
+        matrix_label.setStyleSheet("color: #333; margin-top: 10px;")
+        scroll_layout.addWidget(matrix_label)
+        scroll_layout.addWidget(self.matrix_plot_label)
+        scroll_layout.addWidget(self.show_matrix_button)
+        
+        # Configurar el área de scroll
+        scroll_area.setWidget(scroll_content)
+        main_layout.addWidget(scroll_area)
 
         # Conexiones
         self.process_keypoints_button.clicked.connect(self.start_keypoint_processing)
@@ -199,6 +274,13 @@ class TrainingDashboardWindow(QWidget):
         self.train_button.setDisabled(False)
         self.process_keypoints_button.setDisabled(False)
         self.show_matrix_button.setDisabled(False)
+
+    def create_training_icon(self):
+        """Crear icono para la ventana de entrenamiento"""
+        # Crear un icono simple usando texto/emoji
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.transparent)
+        return QIcon(pixmap)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

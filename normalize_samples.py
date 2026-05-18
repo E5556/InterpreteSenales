@@ -20,7 +20,10 @@ def read_frames_from_directory(directory):
 
 
 # Interpolar frames para alcanzar el conteo deseado
-def interpolate_frames(frames, target_frame_count=15):
+def interpolate_frames(frames, target_frame_count=None):
+    if target_frame_count is None:
+        from constants import MODEL_FRAMES
+        target_frame_count = MODEL_FRAMES
     current_frame_count = len(frames)
     indices = np.linspace(0, current_frame_count - 1, target_frame_count)
     interpolated_frames = []
@@ -40,7 +43,10 @@ def interpolate_frames(frames, target_frame_count=15):
 
 
 # Normalizar el número de frames manteniendo orden
-def normalize_frames(frames, target_frame_count=15):
+def normalize_frames(frames, target_frame_count=None):
+    if target_frame_count is None:
+        from constants import MODEL_FRAMES
+        target_frame_count = MODEL_FRAMES
     current_frame_count = len(frames)
     if current_frame_count < target_frame_count:
         # Interpolación si hay menos frames
@@ -54,7 +60,10 @@ def normalize_frames(frames, target_frame_count=15):
 
 
 # Procesar un directorio específico
-def process_directory(word_directory, target_frame_count=15):
+def process_directory(word_directory, target_frame_count=None):
+    if target_frame_count is None:
+        from constants import MODEL_FRAMES
+        target_frame_count = MODEL_FRAMES
     for sample_name in os.listdir(word_directory):
         sample_directory = os.path.join(word_directory, sample_name)
         if os.path.isdir(sample_directory):

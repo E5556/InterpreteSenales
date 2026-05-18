@@ -1,7 +1,8 @@
 import sys
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, 
-                             QListWidget, QListWidgetItem, QMessageBox, QHBoxLayout)
+                             QListWidget, QListWidgetItem, QMessageBox, QHBoxLayout, QLabel)
 from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon, QPixmap
 from database import get_user_sessions, delete_session
 
 class SessionsWindow(QWidget):
@@ -11,21 +12,30 @@ class SessionsWindow(QWidget):
         self.controller = controller
         self.is_admin_mode = is_admin_mode
         
-        self.setWindowTitle("Historial de Sesiones")
-        self.setGeometry(300, 300, 500, 400)
+        self.setWindowTitle("📋 Intérprete LSC - Gestión de Sesiones")
+        self.setGeometry(300, 300, 600, 500)
+        
+        # Configurar icono de la ventana
+        self.setWindowIcon(self.create_sessions_icon())
         
         # SessionsWindow ES una ventana principal - puede cerrar la aplicación
         
         layout = QVBoxLayout(self)
+        
+        # Título de la ventana
+        title_label = QLabel("<h2>📋 Mis Sesiones de Interpretación</h2>")
+        title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title_label)
         
         self.sessions_list = QListWidget(self)
         self.populate_sessions()
         
         # Botones
         button_layout = QHBoxLayout()
-        self.new_session_button = QPushButton("Iniciar Nueva Sesión", self)
-        self.logout_button = QPushButton("Cerrar Sesión", self)
-        self.delete_session_button = QPushButton("Eliminar Sesión Seleccionada", self)
+        self.new_session_button = QPushButton("🎬 Iniciar Nueva Sesión", self)
+        self.learning_mode_button = QPushButton("🎓 Modo de Aprendizaje", self)
+        self.logout_button = QPushButton("🚪 Cerrar Sesión", self)
+        self.delete_session_button = QPushButton("🗑️ Eliminar Sesión Seleccionada", self)
 
         # Lógica de visibilidad
         if self.is_admin_mode:
@@ -35,6 +45,7 @@ class SessionsWindow(QWidget):
             self.delete_session_button.hide()
 
         button_layout.addWidget(self.new_session_button)
+        button_layout.addWidget(self.learning_mode_button)
         button_layout.addWidget(self.delete_session_button)
         button_layout.addStretch()
         button_layout.addWidget(self.logout_button)
@@ -44,6 +55,7 @@ class SessionsWindow(QWidget):
         
         # Conexiones
         self.new_session_button.clicked.connect(self.start_new_session)
+        self.learning_mode_button.clicked.connect(self.open_learning_mode)
         self.logout_button.clicked.connect(self.logout)
         self.sessions_list.itemClicked.connect(self.view_session_history)
         self.delete_session_button.clicked.connect(self.handle_delete_session)
@@ -90,9 +102,25 @@ class SessionsWindow(QWidget):
             QMessageBox.information(self, "Éxito", "Sesión eliminada correctamente.")
             self.populate_sessions() # Refrescar la lista
             
+    def open_learning_mode(self):
+        """Abre la ventana del modo de aprendizaje"""
+        try:
+            from learning_mode_window import LearningModeWindow
+            self.learning_window = LearningModeWindow()
+            self.learning_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo abrir el modo de aprendizaje:\n{str(e)}")
+    
     def logout(self):
         self.controller.logout()
         self.close()
+
+    def create_sessions_icon(self):
+        """Crear icono para la ventana de sesiones"""
+        # Crear un icono simple usando texto/emoji
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.transparent)
+        return QIcon(pixmap)
 
 # Para probar la ventana de forma independiente
 if __name__ == '__main__':

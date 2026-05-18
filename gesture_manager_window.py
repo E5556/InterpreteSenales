@@ -1,35 +1,12 @@
 import sys
 import os
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-                             QListWidget, QListWidgetItem, QPushButton, QInputDialog, QMessageBox, QProgressDialog)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+                             QListWidget, QListWidgetItem, QPushButton, QInputDialog, QMessageBox, QLabel)
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon, QPixmap, QColor
 from constants import FRAME_ACTIONS_PATH
 from training_utils import get_gestures_with_samples, get_all_gesture_folders
 
-class ProcessingThread(QThread):
-    progress_updated = pyqtSignal(float, str)
-    finished_successfully = pyqtSignal(bool)
-    
-    def __init__(self, gesture_name):
-        super().__init__()
-        self.gesture_name = gesture_name
-    
-    def run(self):
-        try:
-            from training_utils import normalize_and_create_keypoints_single_gesture
-            
-            def progress_callback(progress, message):
-                self.progress_updated.emit(progress, message)
-            
-            result = normalize_and_create_keypoints_single_gesture(
-                self.gesture_name, 
-                progress_callback
-            )
-            self.finished_successfully.emit(result)
-            
-        except Exception as e:
-            self.progress_updated.emit(0.0, f"Error: {str(e)}")
-            self.finished_successfully.emit(False)
 
 class GestureManagerWindow(QWidget):
     def __init__(self, controller):
@@ -37,30 +14,36 @@ class GestureManagerWindow(QWidget):
         self.controller = controller
         self.capture_win = None # Referencia
 
-        self.setWindowTitle("Gestor de Gestos y Entrenamiento")
-        self.setGeometry(200, 200, 600, 500)
+        self.setWindowTitle("🤲 Intérprete LSC - Gestor de Gestos y Entrenamiento")
+        self.setGeometry(200, 200, 700, 600)
+        
+        # Configurar icono de la ventana
+        self.setWindowIcon(self.create_gesture_manager_icon())
         
         # Asegurar que esta ventana no termine la aplicación al cerrarse
         self.setAttribute(Qt.WA_QuitOnClose, False)
 
         layout = QVBoxLayout(self)
+        
+        # Título del panel
+        title_label = QLabel("<h2>🤲 Gestor de Gestos y Entrenamiento</h2>")
+        title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title_label)
 
         # Lista de Gestos
         self.gestures_list = QListWidget()
 
         # Botones de Acción de Gestos
         gesture_buttons_layout = QHBoxLayout()
-        self.add_gesture_button = QPushButton("Crear Nuevo Gesto")
-        self.add_samples_button = QPushButton("Agregar Muestras")
-        self.delete_gesture_button = QPushButton("Eliminar Gesto")
-        self.process_gesture_button = QPushButton("Procesar Gesto Seleccionado")
+        self.add_gesture_button = QPushButton("➕ Crear Nuevo Gesto")
+        self.add_samples_button = QPushButton("📹 Agregar Muestras")
+        self.delete_gesture_button = QPushButton("🗑️ Eliminar Gesto")
         gesture_buttons_layout.addWidget(self.add_gesture_button)
         gesture_buttons_layout.addWidget(self.add_samples_button)
         gesture_buttons_layout.addWidget(self.delete_gesture_button)
-        gesture_buttons_layout.addWidget(self.process_gesture_button)
 
         # Botón de Entrenamiento
-        self.train_button = QPushButton("Ir al Panel de Entrenamiento")
+        self.train_button = QPushButton("🧠 Ir al Panel de Entrenamiento")
 
         layout.addWidget(self.gestures_list)
         layout.addLayout(gesture_buttons_layout)
@@ -72,14 +55,11 @@ class GestureManagerWindow(QWidget):
         self.add_gesture_button.clicked.connect(self.handle_add_gesture)
         self.delete_gesture_button.clicked.connect(self.handle_delete_gesture)
         self.add_samples_button.clicked.connect(self.handle_add_samples)
-        self.process_gesture_button.clicked.connect(self.handle_process_gesture)
         self.train_button.clicked.connect(self.handle_go_to_training)
         
-        # Variables para procesamiento
-        self.processing_thread = None
 
     def populate_gestures_list(self):
-        """Llenar la lista con TODOS los gestos disponibles (con y sin muestras)"""
+        """Llenar la lista con TODOS los gestos disponibles mostrando su estado de procesamiento"""
         self.gestures_list.clear()
         
         # Obtener todos los gestos (incluso vacíos)
@@ -88,21 +68,45 @@ class GestureManagerWindow(QWidget):
         gestures_with_samples = get_gestures_with_samples()
         
         for gesture_name in all_gestures:
-            # Crear item con indicador visual
-            if gesture_name in gestures_with_samples:
-                display_text = f"✅ {gesture_name} (con muestras)"
-                item = QListWidgetItem(display_text)
-                item.setData(Qt.UserRole, gesture_name)  # Guardar nombre real
-                # Color verde para gestos con muestras
-                item.setBackground(self.palette().color(self.palette().AlternateBase))
-            else:
+            # Verificar estado del gesto
+            has_samples = gesture_name in gestures_with_samples
+            has_keypoints = self.check_gesture_has_keypoints(gesture_name)
+            
+            # Crear item con indicador visual según el estado
+            if not has_samples:
+                # Gesto sin muestras
                 display_text = f"📁 {gesture_name} (sin muestras)"
                 item = QListWidgetItem(display_text)
-                item.setData(Qt.UserRole, gesture_name)  # Guardar nombre real
-                # Color gris para gestos sin muestras
+                item.setData(Qt.UserRole, gesture_name)
                 item.setForeground(self.palette().color(self.palette().Mid))
+            elif has_samples and not has_keypoints:
+                # Gesto con muestras pero sin procesar (NUEVO/PENDIENTE)
+                display_text = f"🆕 {gesture_name} (muestras nuevas - sin procesar)"
+                item = QListWidgetItem(display_text)
+                item.setData(Qt.UserRole, gesture_name)
+                # Color naranja/amarillo para gestos pendientes de procesar
+                item.setBackground(QColor(255, 248, 220))  # Amarillo claro
+                item.setForeground(QColor(255, 140, 0))    # Naranja
+            elif has_samples and has_keypoints:
+                # Gesto completamente procesado
+                display_text = f"✅ {gesture_name} (procesado y listo)"
+                item = QListWidgetItem(display_text)
+                item.setData(Qt.UserRole, gesture_name)
+                # Color verde para gestos procesados
+                item.setBackground(QColor(240, 255, 240))  # Verde claro
+                item.setForeground(QColor(0, 128, 0))      # Verde oscuro
             
             self.gestures_list.addItem(item)
+    
+    def check_gesture_has_keypoints(self, gesture_name):
+        """Verificar si un gesto tiene keypoints procesados"""
+        from constants import KEYPOINTS_PATH
+        keypoints_path = os.path.join(KEYPOINTS_PATH, f"{gesture_name}.h5")
+        return os.path.exists(keypoints_path)
+    
+    def refresh_gestures_list(self):
+        """Actualizar la lista de gestos (útil para refrescar después de cambios)"""
+        self.populate_gestures_list()
 
     def handle_add_gesture(self):
         """Maneja la creación de un nuevo gesto"""
@@ -179,104 +183,22 @@ class GestureManagerWindow(QWidget):
 
         gesture_name = selected_items[0].data(Qt.UserRole)  # Obtener nombre real
         self.controller.show_capture_window(gesture_name)
+        
+        # Actualizar la lista cuando se regrese de la ventana de captura
+        # Esto se ejecutará cuando la ventana de captura se cierre
+        self.refresh_gestures_list()
 
-    def handle_process_gesture(self):
-        """Procesar gesto seleccionado (normalizar + keypoints)"""
-        selected_items = self.gestures_list.selectedItems()
-        if not selected_items:
-            QMessageBox.warning(self, "Selección Requerida", "Por favor, selecciona un gesto para procesar.")
-            return
-        
-        gesture_name = selected_items[0].data(Qt.UserRole)  # Obtener nombre real
-        
-        # Verificar que el gesto tenga muestras antes de procesar
-        gestures_with_samples = get_gestures_with_samples()
-        if gesture_name not in gestures_with_samples:
-            QMessageBox.warning(self, "Sin Muestras", 
-                              f"El gesto '{gesture_name}' no tiene muestras para procesar.\n\n"
-                              f"Primero agrega muestras usando el botón 'Agregar Muestras'.")
-            return
-        
-        # Confirmar procesamiento
-        reply = QMessageBox.question(self, 'Confirmar Procesamiento', 
-                                   f"¿Procesar el gesto '{gesture_name}'?\n\n"
-                                   f"Esto realizará:\n"
-                                   f"• Normalización de muestras (15 frames)\n"
-                                   f"• Creación de keypoints\n\n"
-                                   f"Esto puede tomar unos minutos...",
-                                   QMessageBox.Yes | QMessageBox.No, 
-                                   QMessageBox.Yes)
-        
-        if reply == QMessageBox.Yes:
-            self.start_processing(gesture_name)
-    
-    def start_processing(self, gesture_name):
-        """Iniciar procesamiento en hilo separado"""
-        if self.processing_thread and self.processing_thread.isRunning():
-            QMessageBox.warning(self, "Procesamiento en Curso", 
-                              "Ya hay un procesamiento en curso. Espere a que termine.")
-            return
-        
-        # Crear diálogo de progreso
-        self.progress_dialog = QProgressDialog(f"Procesando '{gesture_name}'...", "Cancelar", 0, 100, self)
-        self.progress_dialog.setWindowTitle("Procesamiento de Gesto")
-        self.progress_dialog.setWindowModality(Qt.WindowModal)
-        self.progress_dialog.canceled.connect(self.cancel_processing)
-        self.progress_dialog.show()
-        
-        # Deshabilitar botones durante procesamiento
-        self.process_gesture_button.setEnabled(False)
-        self.add_gesture_button.setEnabled(False)
-        self.delete_gesture_button.setEnabled(False)
-        
-        # Iniciar hilo de procesamiento
-        self.processing_thread = ProcessingThread(gesture_name)
-        self.processing_thread.progress_updated.connect(self.on_processing_progress)
-        self.processing_thread.finished_successfully.connect(self.on_processing_finished)
-        self.processing_thread.start()
-    
-    def on_processing_progress(self, progress, message):
-        """Actualizar progreso"""
-        progress_percent = int(progress * 100)
-        self.progress_dialog.setValue(progress_percent)
-        self.progress_dialog.setLabelText(f"[{progress_percent}%] {message}")
-    
-    def on_processing_finished(self, success):
-        """Procesamiento terminado"""
-        # Habilitar botones
-        self.process_gesture_button.setEnabled(True)
-        self.add_gesture_button.setEnabled(True)
-        self.delete_gesture_button.setEnabled(True)
-        
-        # Cerrar diálogo de progreso
-        if hasattr(self, 'progress_dialog'):
-            self.progress_dialog.close()
-        
-        if success:
-            QMessageBox.information(self, "Éxito", 
-                                  "¡Gesto procesado exitosamente!\n\n"
-                                  "• Muestras normalizadas a 15 frames\n"
-                                  "• Keypoints generados\n"
-                                  "• Listo para entrenamiento")
-        else:
-            QMessageBox.warning(self, "Error", 
-                              "Hubo un error procesando el gesto.\n\n"
-                              "Verifica que el gesto tenga muestras válidas.")
-    
-    def cancel_processing(self):
-        """Cancelar procesamiento"""
-        if self.processing_thread and self.processing_thread.isRunning():
-            self.processing_thread.terminate()
-            self.processing_thread.wait()
-        
-        # Habilitar botones
-        self.process_gesture_button.setEnabled(True)
-        self.add_gesture_button.setEnabled(True)
-        self.delete_gesture_button.setEnabled(True)
 
     def handle_go_to_training(self):
         self.controller.show_training_dashboard()
         self.close()
+
+    def create_gesture_manager_icon(self):
+        """Crear icono para la ventana de gestión de gestos"""
+        # Crear un icono simple usando texto/emoji
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.transparent)
+        return QIcon(pixmap)
 
 if __name__ == '__main__':
     class MockController:

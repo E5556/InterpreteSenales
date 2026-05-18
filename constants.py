@@ -4,10 +4,16 @@ import cv2
 # SETTINGS
 MIN_LENGTH_FRAMES = 5
 LENGTH_KEYPOINTS = 1662
-MODEL_FRAMES = 15
+MODEL_FRAMES = 15  # Configurado para 15 frames para compatibilidad con el modelo actual
+
+# CAMERA SETTINGS
+CAMERA_INDEX = 0  # Cambia este número para seleccionar otra cámara (0=primera, 1=segunda, etc.)
 
 # DATABASE
-DATABASE_NAME = "usuarios.db"
+from config import get_database_path
+def get_database_name():
+    return get_database_path()
+DATABASE_NAME = get_database_name()  # Mantener compatibilidad hacia atrás
 
 # PATHS
 ROOT_PATH = os.getcwd()

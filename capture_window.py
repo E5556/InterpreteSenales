@@ -4,12 +4,12 @@ import cv2
 import numpy as np
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QMessageBox, QPushButton, QCheckBox)
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtGui import QImage, QPixmap, QIcon
 from PyQt5.QtCore import QTimer, Qt, QThread, pyqtSignal
 from mediapipe.python.solutions.holistic import Holistic
 from datetime import datetime
 from helpers import create_folder, draw_keypoints, mediapipe_detection, save_frames, there_hand
-from constants import FRAME_ACTIONS_PATH, MIN_LENGTH_FRAMES
+from constants import FRAME_ACTIONS_PATH, MIN_LENGTH_FRAMES, CAMERA_INDEX
 
 class ProcessingThread(QThread):
     progress_updated = pyqtSignal(float, str)
@@ -42,8 +42,11 @@ class CaptureWindow(QWidget):
         self.gesture_name = gesture_name
         self.gesture_path = os.path.join(FRAME_ACTIONS_PATH, self.gesture_name)
 
-        self.setWindowTitle(f"Toma de muestras para '{self.gesture_name}'")
-        self.setGeometry(100, 100, 900, 700)  # Ventana más grande para video completo
+        self.setWindowTitle(f"📹 Intérprete LSC - Captura de Muestras: '{self.gesture_name}'")
+        self.setGeometry(100, 100, 950, 750)  # Ventana más grande para video completo
+        
+        # Configurar icono de la ventana
+        self.setWindowIcon(self.create_capture_icon())
         
         # Asegurar que esta ventana no termine la aplicación al cerrarse
         self.setAttribute(Qt.WA_QuitOnClose, False)
@@ -60,22 +63,33 @@ class CaptureWindow(QWidget):
         # --- Interface Layout ---
         main_layout = QVBoxLayout(self)
         
+        # Título de la ventana
+        title_label = QLabel(f"<h2>📹 Captura de Muestras: '{self.gesture_name}'</h2>")
+        title_label.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(title_label)
+        
         # Video área (tamaño real de cámara)
-        self.video_label = QLabel("Iniciando cámara...")
+        self.video_label = QLabel("📹 Iniciando cámara...")
         self.video_label.setAlignment(Qt.AlignCenter)
         self.video_label.setMinimumSize(640, 480)  # Tamaño estándar de cámara
-        self.video_label.setStyleSheet("border: 1px solid #ccc; background-color: black;")
+        self.video_label.setStyleSheet("border: 2px solid #4CAF50; background-color: black; border-radius: 5px;")
         
         # Frame counter y status en una línea horizontal
         info_layout = QHBoxLayout()
         
-        self.frame_counter_label = QLabel("Frames: 0")
-        self.frame_counter_label.setStyleSheet("font-weight: bold; color: #333;")
+        self.frame_counter_label = QLabel("📊 Frames: 0")
+        self.frame_counter_label.setStyleSheet("font-weight: bold; color: #333; font-size: 14px;")
         
-        self.status_label = QLabel("Listo para capturar. Muestre una seña a la cámara.")
+        self.status_label = QLabel("🎯 Listo para capturar. Muestre una seña a la cámara.")
         self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setStyleSheet("font-size: 14px; color: #2E7D32;")
+        
+        # Contador de muestras capturadas
+        self.samples_counter_label = QLabel("📁 Muestras: 0")
+        self.samples_counter_label.setStyleSheet("font-weight: bold; color: #1976D2; font-size: 14px;")
         
         info_layout.addWidget(self.frame_counter_label)
+        info_layout.addWidget(self.samples_counter_label)
         info_layout.addStretch()
         info_layout.addWidget(self.status_label)
         info_layout.addStretch()
@@ -84,12 +98,92 @@ class CaptureWindow(QWidget):
         main_layout.addWidget(self.video_label)
         main_layout.addLayout(info_layout)
         
+        # Botones de navegación
+        buttons_layout = QHBoxLayout()
+        
+        # Botón para finalizar captura y volver
+        self.finish_button = QPushButton("✅ Finalizar Captura y Volver", self)
+        self.finish_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:pressed {
+                background-color: #3d8b40;
+            }
+        """)
+        
+        # Botón para cerrar sin guardar
+        self.cancel_button = QPushButton("❌ Cancelar y Cerrar", self)
+        self.cancel_button.setStyleSheet("""
+            QPushButton {
+                background-color: #f44336;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #da190b;
+            }
+            QPushButton:pressed {
+                background-color: #c1170b;
+            }
+        """)
+        
+        # Botón para procesar muestras capturadas
+        self.process_button = QPushButton("⚙️ Procesar Muestras Capturadas", self)
+        self.process_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: bold;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+            QPushButton:pressed {
+                background-color: #1565C0;
+            }
+        """)
+        
+        # Agregar botones al layout
+        buttons_layout.addWidget(self.finish_button)
+        buttons_layout.addWidget(self.process_button)
+        buttons_layout.addStretch()
+        buttons_layout.addWidget(self.cancel_button)
+        
+        main_layout.addLayout(buttons_layout)
+        
+        # Conectar señales de los botones
+        self.finish_button.clicked.connect(self.finish_capture)
+        self.cancel_button.clicked.connect(self.cancel_capture)
+        self.process_button.clicked.connect(self.process_captured_samples)
+        
+        # Inicializar contador de muestras existentes
+        initial_sample_count = self.count_captured_samples()
+        self.samples_counter_label.setText(f"📁 Muestras: {initial_sample_count}")
+        
         # Variables para procesamiento manual (si se necesita en el futuro)
         self.processing_thread = None
 
         # --- Cámara y Timer ---
         try:
-            self.capture = cv2.VideoCapture(0)
+            self.capture = cv2.VideoCapture(CAMERA_INDEX)
             if not self.capture.isOpened():
                 QMessageBox.warning(self, "Error de Cámara", "No se puede acceder a la cámara.")
                 self.capture = None
@@ -125,8 +219,8 @@ class CaptureWindow(QWidget):
                 cv2.putText(image_copy, 'Capturando...', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 50, 0), 2)
                 self.frames_sequence.append(np.asarray(frame))
                 # Actualizar contador y status
-                self.frame_counter_label.setText(f"Frames: {len(self.frames_sequence)}")
-                self.status_label.setText(f"¡GRABANDO! Frames capturados: {len(self.frames_sequence)}")
+                self.frame_counter_label.setText(f"📊 Frames: {len(self.frames_sequence)}")
+                self.status_label.setText(f"🔴 ¡GRABANDO! Frames capturados: {len(self.frames_sequence)}")
         else: # No se detecta mano
             if len(self.frames_sequence) >= MIN_LENGTH_FRAMES + self.margin_frame:
                 self.fix_frames += 1
@@ -139,7 +233,7 @@ class CaptureWindow(QWidget):
                 self.reset_capture_state()
                 # Dibujar texto "Listo para capturar..." en el video (como original)
                 cv2.putText(image_copy, 'Listo para capturar...', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 220, 100), 2)
-                self.status_label.setText("Listo para capturar. Muestre una seña a la cámara.")
+                self.status_label.setText("🎯 Listo para capturar. Muestre una seña a la cámara.")
 
         # Dibujar keypoints en la imagen (como original)
         draw_keypoints(image_copy, results)
@@ -159,9 +253,14 @@ class CaptureWindow(QWidget):
             output_folder = os.path.join(self.gesture_path, f"sample_{today}")
             create_folder(output_folder)
             save_frames(frames_to_save, output_folder)
-            self.status_label.setText(f"¡Muestra guardada! ({len(frames_to_save)} frames). Listo para la siguiente.")
+            
+            # Actualizar contador de muestras
+            sample_count = self.count_captured_samples()
+            self.samples_counter_label.setText(f"📁 Muestras: {sample_count}")
+            
+            self.status_label.setText(f"✅ ¡Muestra guardada! ({len(frames_to_save)} frames). Total: {sample_count} muestras.")
         else:
-            self.status_label.setText(f"Captura muy corta, no guardada. Inténtelo de nuevo.")
+            self.status_label.setText(f"⚠️ Captura muy corta, no guardada. Inténtelo de nuevo.")
     
     def process_gesture(self):
         """Iniciar el procesamiento del gesto en un hilo separado"""
@@ -184,9 +283,24 @@ class CaptureWindow(QWidget):
     def on_processing_finished(self, success):
         """Procesamiento terminado"""
         if success:
-            self.status_label.setText(f"¡Procesamiento completado! Listo para capturar más.")
+            self.status_label.setText(f"✅ ¡Procesamiento completado! Muestras listas para entrenamiento.")
+            QMessageBox.information(
+                self, 
+                "Procesamiento Completado", 
+                f"✅ ¡Procesamiento exitoso!\n\n"
+                f"🤲 Gesto: '{self.gesture_name}'\n"
+                f"📊 Muestras procesadas y normalizadas a 20 frames\n"
+                f"🔧 Keypoints generados\n\n"
+                f"💡 El gesto está listo para entrenamiento."
+            )
         else:
-            self.status_label.setText("Error en procesamiento automático. Continúe capturando.")
+            self.status_label.setText("❌ Error en procesamiento. Verifique las muestras capturadas.")
+            QMessageBox.warning(
+                self, 
+                "Error en Procesamiento", 
+                "❌ Hubo un error procesando las muestras.\n\n"
+                "Verifique que las muestras capturadas sean válidas."
+            )
 
     def reset_capture_state(self):
         self.in_delay_period = False
@@ -194,7 +308,108 @@ class CaptureWindow(QWidget):
         self.frames_sequence = []
         self.count_frame = 0
         # Reiniciar contador visual
-        self.frame_counter_label.setText("Frames: 0")
+        self.frame_counter_label.setText("📊 Frames: 0")
+
+    def create_capture_icon(self):
+        """Crear icono para la ventana de captura"""
+        # Crear un icono simple usando texto/emoji
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.transparent)
+        return QIcon(pixmap)
+
+    def finish_capture(self):
+        """Finalizar captura y volver al gestor de gestos"""
+        # Contar muestras capturadas
+        sample_count = self.count_captured_samples()
+        
+        if sample_count > 0:
+            reply = QMessageBox.question(
+                self, 
+                "Finalizar Captura", 
+                f"Has capturado {sample_count} muestras para '{self.gesture_name}'.\n\n"
+                f"¿Deseas finalizar la captura y volver al gestor de gestos?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+            
+            if reply == QMessageBox.Yes:
+                QMessageBox.information(
+                    self, 
+                    "Captura Finalizada", 
+                    f"✅ Captura completada exitosamente!\n\n"
+                    f"📊 Muestras capturadas: {sample_count}\n"
+                    f"🤲 Gesto: '{self.gesture_name}'\n\n"
+                    f"💡 Puedes procesar estas muestras desde el gestor de gestos."
+                )
+                self.close()
+        else:
+            reply = QMessageBox.question(
+                self, 
+                "Sin Muestras Capturadas", 
+                "No se han capturado muestras aún.\n\n¿Deseas cerrar la ventana de captura?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                self.close()
+
+    def cancel_capture(self):
+        """Cancelar captura y cerrar ventana"""
+        sample_count = self.count_captured_samples()
+        
+        if sample_count > 0:
+            reply = QMessageBox.question(
+                self, 
+                "Cancelar Captura", 
+                f"Has capturado {sample_count} muestras.\n\n"
+                f"¿Estás seguro de que deseas cancelar y cerrar?\n"
+                f"Las muestras capturadas se mantendrán guardadas.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                self.close()
+        else:
+            self.close()
+
+    def process_captured_samples(self):
+        """Procesar las muestras capturadas"""
+        sample_count = self.count_captured_samples()
+        
+        if sample_count == 0:
+            QMessageBox.warning(
+                self, 
+                "Sin Muestras", 
+                "No hay muestras capturadas para procesar.\n\n"
+                "Primero captura algunas muestras del gesto."
+            )
+            return
+        
+        reply = QMessageBox.question(
+            self, 
+            "Procesar Muestras", 
+            f"¿Procesar las {sample_count} muestras capturadas de '{self.gesture_name}'?\n\n"
+            f"Esto realizará:\n"
+            f"• Normalización a {20} frames\n"
+            f"• Creación de keypoints\n"
+            f"• Preparación para entrenamiento",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+        
+        if reply == QMessageBox.Yes:
+            self.process_gesture()
+
+    def count_captured_samples(self):
+        """Contar el número de muestras capturadas"""
+        if not os.path.exists(self.gesture_path):
+            return 0
+        
+        sample_dirs = [d for d in os.listdir(self.gesture_path) 
+                      if os.path.isdir(os.path.join(self.gesture_path, d))]
+        return len(sample_dirs)
 
     def closeEvent(self, event):
         # Detener el hilo de procesamiento si está corriendo
