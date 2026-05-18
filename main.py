@@ -35,33 +35,48 @@ def extract_keypoints(results):
     rh = np.array([[res.x, res.y, res.z] for res in results.right_hand_landmarks.landmark]).flatten() if results.right_hand_landmarks else np.zeros(21*3)
     return np.concatenate([pose, face, lh, rh])
 
-# Función normalize_keypoints basada en el código funcional
+def _interp_subspace(frames_array, target_length):
+    """Interpola un subespacio (pose/cara/mano) por separado preservando su geometría."""
+    n = len(frames_array)
+    if n == target_length:
+        return frames_array
+    indices = np.linspace(0, n - 1, target_length)
+    result = []
+    for i in indices:
+        lo = int(np.floor(i))
+        hi = int(np.ceil(i))
+        w = i - lo
+        if lo == hi:
+            result.append(frames_array[lo])
+        else:
+            result.append((1 - w) * frames_array[lo] + w * frames_array[hi])
+    return result
+
 def normalize_keypoints(keypoints, target_length=15):
     """
-    Normaliza keypoints usando interpolación como en el código funcional
+    Normaliza la secuencia a target_length frames usando interpolación por subespacio.
+    Interpola pose (132), cara (1404), mano izq (63) y mano der (63) por separado
+    para preservar la geometría de cada subespacio antes de concatenar.
     """
-    current_length = len(keypoints)
-    if current_length == target_length:
-        return keypoints
-    
-    # Interpolación lineal como en evaluate_model.py
-    indices = np.linspace(0, current_length - 1, target_length)
-    interpolated_keypoints = []
-    for i in indices:
-        lower_idx = int(np.floor(i))
-        upper_idx = int(np.ceil(i))
-        weight = i - lower_idx
-        if lower_idx == upper_idx:
-            interpolated_keypoints.append(keypoints[lower_idx])
-        else:
-            interpolated_point = (1 - weight) * np.array(keypoints[lower_idx]) + weight * np.array(keypoints[upper_idx])
-            interpolated_keypoints.append(interpolated_point.tolist())
-    
-    return interpolated_keypoints
+    arr = [np.array(kp) for kp in keypoints]
+    # Separar subespacios
+    pose   = [kp[:132]       for kp in arr]
+    face   = [kp[132:1536]   for kp in arr]
+    lh     = [kp[1536:1599]  for kp in arr]
+    rh     = [kp[1599:]      for kp in arr]
+
+    pose_i = _interp_subspace(pose, target_length)
+    face_i = _interp_subspace(face, target_length)
+    lh_i   = _interp_subspace(lh,   target_length)
+    rh_i   = _interp_subspace(rh,   target_length)
+
+    return [np.concatenate([pose_i[i], face_i[i], lh_i[i], rh_i[i]])
+            for i in range(target_length)]
 
 # Importar la función correcta para obtener gestos
 from training_utils import get_gestures_with_valid_keypoints
 from prediction_filter import PredictionFilter
+from conversation_manager import ConversationManager
 
 class AppController:
     def __init__(self):
@@ -187,15 +202,33 @@ class VideoRecorder(QMainWindow):
 
         # Lado derecho: Texto de interpretación
         right_layout = QVBoxLayout()
-        title_label = QLabel("<h2>📝 Interpretación en Tiempo Real</h2>", self)
+        title_label = QLabel("<h2>Interpretación en Tiempo Real</h2>", self)
         title_label.setAlignment(Qt.AlignCenter)
+        right_layout.addWidget(title_label)
+
+        # Indicador de estado de detección
+        self.status_label = QLabel("Estado: Esperando manos...", self)
+        self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setStyleSheet(
+            "QLabel { background-color: #444; color: #aaa; padding: 4px; border-radius: 4px; font-size: 12px; }"
+        )
+        right_layout.addWidget(self.status_label)
+
+        # Frase en construcción (gesto actual acumulado)
+        self.phrase_label = QLabel("Frase actual: —", self)
+        self.phrase_label.setAlignment(Qt.AlignCenter)
+        self.phrase_label.setStyleSheet(
+            "QLabel { background-color: #1a3a5c; color: #7ec8e3; padding: 6px; "
+            "border-radius: 4px; font-size: 13px; font-weight: bold; }"
+        )
+        right_layout.addWidget(self.phrase_label)
+
+        # Historial de interpretación
         self.interpretation_text = QTextEdit(self)
         self.interpretation_text.setReadOnly(True)
         self.interpretation_text.setFontPointSize(14)
-        
-        right_layout.addWidget(title_label)
         right_layout.addWidget(self.interpretation_text)
-        
+
         top_layout.addLayout(right_layout, 1)
         
         # Controles de conversación
@@ -321,18 +354,28 @@ class VideoRecorder(QMainWindow):
             self.count_frame = 0
             self.fix_frames = 0
             self.margin_frame = 1
-            self.delay_frames = 5  # Igual que en capture_window para consistencia con entrenamiento
-            self.prediction_filter = PredictionFilter(window_size=3, confidence_threshold=0.7)
-            
-            # Cargar modelo como en el código funcional
+            self.delay_frames = 5
+            self.confidence_threshold = 0.70
+
+            self.prediction_filter = PredictionFilter(window_size=3, confidence_threshold=self.confidence_threshold)
+            self.conversation_manager = ConversationManager(
+                max_phrase_length=10,
+                gesture_timeout=3.0,
+                confidence_threshold=self.confidence_threshold
+            )
+
+            # Cooldown: evita registrar el mismo gesto dos veces seguidas rápido
+            self.last_gesture_name = None
+            self.last_gesture_time = 0.0
+            self.gesture_cooldown = 1.5   # segundos mínimos entre el mismo gesto
+            self.any_gesture_cooldown = 0.4  # segundos mínimos entre cualquier gesto
+
             print(f"Cargando modelo desde: {MODEL_PATH}")
             self.model = load_model(MODEL_PATH)
             self.recording = False
-            
-            # Obtener word_ids una sola vez al inicializar
+
             self.word_ids = get_gestures_with_valid_keypoints()
             print(f"Modelo verificado: {self.model.input_shape} -> {self.model.output_shape}")
-            
             print("Sistema LSP inicializado correctamente")
             
         except Exception as e:
@@ -358,48 +401,109 @@ class VideoRecorder(QMainWindow):
 
             image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = mediapipe_detection(frame, self.holistic_model)
+            hand_present = there_hand(results)
 
-            # Lógica simplificada basada en el código funcional
-            if there_hand(results) or self.recording:
+            # Actualizar ConversationManager con estado de manos
+            self.conversation_manager.update_hands_detection(hand_present)
+
+            if hand_present or self.recording:
                 self.recording = False
                 self.count_frame += 1
                 if self.count_frame > self.margin_frame:
                     self.kp_seq.append(extract_keypoints(results))
+
+                # Feedback: mano detectada acumulando frames
+                frames_acum = len(self.kp_seq)
+                self.status_label.setText(f"Grabando gesto... ({frames_acum} frames)")
+                self.status_label.setStyleSheet(
+                    "QLabel { background-color: #1a5c1a; color: #7ecc7e; padding: 4px; border-radius: 4px; font-size: 12px; }"
+                )
             else:
                 if self.count_frame >= MIN_LENGTH_FRAMES + self.margin_frame:
                     self.fix_frames += 1
                     if self.fix_frames < self.delay_frames:
                         self.recording = True
+                        # Feedback: esperando confirmación de fin de gesto
+                        self.status_label.setText(f"Confirmando fin de gesto... ({self.fix_frames}/{self.delay_frames})")
+                        self.status_label.setStyleSheet(
+                            "QLabel { background-color: #5c4a1a; color: #ccb87e; padding: 4px; border-radius: 4px; font-size: 12px; }"
+                        )
                         return
 
+                    # --- Procesar secuencia ---
                     trim = self.margin_frame + self.delay_frames
                     if len(self.kp_seq) > trim:
                         self.kp_seq = self.kp_seq[:-trim]
-                    if len(self.kp_seq) < MIN_LENGTH_FRAMES:
-                        pass  # Secuencia demasiado corta, ignorar
-                    else:
-                        kp_normalized = normalize_keypoints(self.kp_seq, int(MODEL_FRAMES))
-                        res = self.model.predict(np.expand_dims(kp_normalized, axis=0))[0]
 
-                        # Suavizar predicción con PredictionFilter (votación por ventana)
+                    if len(self.kp_seq) >= MIN_LENGTH_FRAMES:
+                        kp_normalized = normalize_keypoints(self.kp_seq, int(MODEL_FRAMES))
+                        res = self.model.predict(np.expand_dims(kp_normalized, axis=0), verbose=0)[0]
+
                         gesture_name, confidence = self.prediction_filter.add_prediction(res, self.word_ids)
-                        if confidence > 0.7:
+
+                        # Feedback de confianza en status
+                        pct = int(confidence * 100)
+                        bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
+                        self.status_label.setText(f"Confianza: {bar} {pct}%  |  {gesture_name}")
+                        self.status_label.setStyleSheet(
+                            "QLabel { background-color: #1a3a5c; color: #7ec8e3; padding: 4px; border-radius: 4px; font-size: 12px; }"
+                        )
+
+                        if confidence >= self.confidence_threshold:
                             word_id = gesture_name.split('-')[0]
                             sent = get_display_text(word_id)
                             if sent:
-                                self.sentence.insert(0, sent)
-                                self.interpretation_text.append(f"• {sent}")
-                                text_to_speech(sent)
-                                print(f"GESTO RECONOCIDO: {sent} (confianza: {confidence:.2f})")
-                        self.prediction_filter.reset()
+                                now = time.time()
+                                # Cooldown: mismo gesto no se repite antes de gesture_cooldown
+                                same_gesture_ok = (
+                                    gesture_name != self.last_gesture_name or
+                                    (now - self.last_gesture_time) >= self.gesture_cooldown
+                                )
+                                any_gesture_ok = (now - self.last_gesture_time) >= self.any_gesture_cooldown
 
+                                if same_gesture_ok and any_gesture_ok:
+                                    # Agregar al ConversationManager
+                                    self.conversation_manager.add_gesture(sent, confidence, now)
+                                    self.last_gesture_name = gesture_name
+                                    self.last_gesture_time = now
+
+                                    # Actualizar historial
+                                    self.sentence.insert(0, sent)
+                                    self.interpretation_text.append(f"• {sent}  [{pct}%]")
+                                    text_to_speech(sent)
+                                    print(f"GESTO RECONOCIDO: {sent} ({pct}%)")
+
+                    self.prediction_filter.reset()
+
+                else:
+                    # Secuencia demasiado corta — ignorar silenciosamente
+                    pass
+
+                # Reset estado de captura
                 self.recording = False
                 self.fix_frames = 0
                 self.count_frame = 0
                 self.kp_seq = []
 
-            # Actualizar display de frase como en el código funcional
-            self.interpretation_text.setText(" - ".join(self.sentence))
+                # Feedback idle
+                if not hand_present:
+                    self.status_label.setText("Esperando manos...")
+                    self.status_label.setStyleSheet(
+                        "QLabel { background-color: #444; color: #aaa; padding: 4px; border-radius: 4px; font-size: 12px; }"
+                    )
+
+            # Actualizar frase en construcción desde ConversationManager
+            current_phrase = self.conversation_manager.get_current_phrase()
+            if current_phrase:
+                self.phrase_label.setText(f"Frase actual: {current_phrase}")
+            else:
+                self.phrase_label.setText("Frase actual: —")
+
+            # Verificar si ConversationManager completó una frase por timeout
+            completed = self.conversation_manager.check_timeout()
+            if completed:
+                print(f"FRASE COMPLETADA: {completed}")
+
             draw_keypoints(image, results)
 
             height, width, channel = image.shape
@@ -430,14 +534,26 @@ class VideoRecorder(QMainWindow):
             print("Modo tradicional activado")
             
     def adjust_sensitivity(self, value):
-        """Ajustar la sensibilidad del detector"""
+        """Ajustar el umbral de confianza en PredictionFilter y ConversationManager."""
         threshold = value / 100.0
-        print(f"Sensibilidad ajustada a: {threshold:.2f}")
+        self.confidence_threshold = threshold
+        if hasattr(self, 'prediction_filter'):
+            self.prediction_filter.confidence_threshold = threshold
+        if hasattr(self, 'conversation_manager'):
+            self.conversation_manager.set_confidence_threshold(threshold)
+        print(f"Umbral de confianza: {threshold:.2f}")
         
     def clear_conversation(self):
         """Limpiar la conversación actual"""
         self.sentence = []
         self.interpretation_text.clear()
+        self.phrase_label.setText("Frase actual: —")
+        if hasattr(self, 'conversation_manager'):
+            self.conversation_manager.reset()
+        if hasattr(self, 'prediction_filter'):
+            self.prediction_filter.reset()
+        self.last_gesture_name = None
+        self.last_gesture_time = 0.0
         print("Conversación limpiada")
 
     def closeEvent(self, event):
