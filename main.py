@@ -247,7 +247,7 @@ class VideoRecorder(QMainWindow):
         self.sensitivity_slider = QSlider(Qt.Horizontal, self)
         self.sensitivity_slider.setMinimum(50)  # 0.5 (menos sensible)
         self.sensitivity_slider.setMaximum(95)  # 0.95 (muy sensible)
-        self.sensitivity_slider.setValue(60)    # 0.6 (valor inicial más permisivo)
+        self.sensitivity_slider.setValue(65)    # 0.65 umbral inicial
         self.sensitivity_slider.valueChanged.connect(self.adjust_sensitivity)
         controls_layout.addWidget(self.sensitivity_slider)
         
@@ -355,7 +355,7 @@ class VideoRecorder(QMainWindow):
             self.fix_frames = 0
             self.margin_frame = 1
             self.delay_frames = 5
-            self.confidence_threshold = 0.70
+            self.confidence_threshold = 0.65
 
             self.prediction_filter = PredictionFilter(window_size=3, confidence_threshold=self.confidence_threshold)
             self.conversation_manager = ConversationManager(
