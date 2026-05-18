@@ -24,7 +24,36 @@ def create_folder(path):
         os.makedirs(path)
 
 def there_hand(results: NamedTuple) -> bool:
-    return results.left_hand_landmarks or results.right_hand_landmarks
+    """
+    Detecta si hay manos presentes en el frame con detección de calidad.
+    Nota: MediaPipe hand landmarks no tienen atributo 'visibility' (solo pose lo tiene).
+    Se valida calidad verificando que las coordenadas estén en rango [0,1].
+    """
+    left_hand_present = results.left_hand_landmarks is not None
+    right_hand_present = results.right_hand_landmarks is not None
+
+    if not (left_hand_present or right_hand_present):
+        return False
+
+    min_valid_landmarks = 15
+
+    if left_hand_present:
+        left_valid = sum(
+            1 for lm in results.left_hand_landmarks.landmark
+            if 0.0 <= lm.x <= 1.0 and 0.0 <= lm.y <= 1.0
+        )
+        if left_valid >= min_valid_landmarks:
+            return True
+
+    if right_hand_present:
+        right_valid = sum(
+            1 for lm in results.right_hand_landmarks.landmark
+            if 0.0 <= lm.x <= 1.0 and 0.0 <= lm.y <= 1.0
+        )
+        if right_valid >= min_valid_landmarks:
+            return True
+
+    return False
 
 # get_word_ids eliminada - ahora se usa detección automática desde training_utils
 
