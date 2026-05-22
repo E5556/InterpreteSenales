@@ -3,6 +3,7 @@ import os
 import cv2
 import numpy as np
 import time
+import threading
 
 # Configurar variables de entorno para suprimir advertencias de CUDA
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suprimir advertencias de TensorFlow
@@ -89,6 +90,7 @@ class AppController:
         self.gesture_manager = None
         self.capture_window = None
         self.training_dashboard = None
+        self.learning_mode_window = None
 
     def start(self):
         self.login_window.show()
@@ -116,6 +118,11 @@ class AppController:
     def show_training_dashboard(self):
         self.training_dashboard = TrainingDashboardWindow(self)
         self.training_dashboard.show()
+
+    def show_learning_mode(self):
+        from learning_mode_window import LearningModeWindow
+        self.learning_mode_window = LearningModeWindow()
+        self.learning_mode_window.show()
     
     def show_statistics(self, user_id=None, user_role='user'):
         """Muestra las estadísticas del usuario o del sistema"""
@@ -251,6 +258,11 @@ class VideoRecorder(QMainWindow):
         self.sensitivity_slider.valueChanged.connect(self.adjust_sensitivity)
         controls_layout.addWidget(self.sensitivity_slider)
         
+        # Botón para hablar la frase acumulada manualmente
+        self.speak_button = QPushButton("🔊 Hablar Frase", self)
+        self.speak_button.clicked.connect(self.speak_current_phrase)
+        controls_layout.addWidget(self.speak_button)
+
         # Botón para limpiar conversación
         self.clear_button = QPushButton("🗑️ Limpiar Conversación", self)
         self.clear_button.clicked.connect(self.clear_conversation)
@@ -354,7 +366,7 @@ class VideoRecorder(QMainWindow):
             self.count_frame = 0
             self.fix_frames = 0
             self.margin_frame = 1
-            self.delay_frames = 5
+            self.delay_frames = 2
             self.confidence_threshold = 0.65
 
             self.prediction_filter = PredictionFilter(window_size=3, confidence_threshold=self.confidence_threshold)
@@ -466,11 +478,6 @@ class VideoRecorder(QMainWindow):
                                     self.conversation_manager.add_gesture(sent, confidence, now)
                                     self.last_gesture_name = gesture_name
                                     self.last_gesture_time = now
-
-                                    # Actualizar historial
-                                    self.sentence.insert(0, sent)
-                                    self.interpretation_text.append(f"• {sent}  [{pct}%]")
-                                    text_to_speech(sent)
                                     print(f"GESTO RECONOCIDO: {sent} ({pct}%)")
 
                     self.prediction_filter.reset()
@@ -503,6 +510,9 @@ class VideoRecorder(QMainWindow):
             completed = self.conversation_manager.check_timeout()
             if completed:
                 print(f"FRASE COMPLETADA: {completed}")
+                self.interpretation_text.append(f">> {completed}")
+                self.phrase_label.setText("Frase actual: —")
+                threading.Thread(target=text_to_speech, args=(completed,), daemon=True).start()
 
             draw_keypoints(image, results)
 
@@ -543,6 +553,15 @@ class VideoRecorder(QMainWindow):
             self.conversation_manager.set_confidence_threshold(threshold)
         print(f"Umbral de confianza: {threshold:.2f}")
         
+    def speak_current_phrase(self):
+        """Habla la frase acumulada manualmente y la registra."""
+        phrase = self.conversation_manager.force_complete_phrase()
+        if phrase:
+            self.interpretation_text.append(f">> {phrase}")
+            self.phrase_label.setText("Frase actual: —")
+            threading.Thread(target=text_to_speech, args=(phrase,), daemon=True).start()
+            print(f"FRASE MANUAL: {phrase}")
+
     def clear_conversation(self):
         """Limpiar la conversación actual"""
         self.sentence = []

@@ -127,12 +127,21 @@ class TrainingDashboardWindow(QWidget):
         self.epochs_input.setRange(1, 2000)
         self.epochs_input.setValue(500)
         self.process_keypoints_button = QPushButton("⚙️ 1. Normalizar + Procesar Keypoints")
-        self.process_keypoints_button.setToolTip("Flujo completo: Normaliza muestras a 15 frames y crea keypoints")
+        self.process_keypoints_button.setToolTip("Normaliza muestras a 15 frames y crea keypoints")
         self.train_button = QPushButton("🚀 2. Iniciar Entrenamiento")
-        
+
+        from PyQt5.QtWidgets import QCheckBox
+        self.force_reprocess_checkbox = QCheckBox("Forzar reprocesamiento completo")
+        self.force_reprocess_checkbox.setChecked(False)
+        self.force_reprocess_checkbox.setToolTip(
+            "Desmarcado: salta gestos cuyo .h5 ya está actualizado (más rápido).\n"
+            "Marcado: reprocesa todos los gestos desde cero."
+        )
+
         top_controls_layout.addWidget(QLabel("Épocas de Entrenamiento:"))
         top_controls_layout.addWidget(self.epochs_input)
         top_controls_layout.addWidget(self.process_keypoints_button)
+        top_controls_layout.addWidget(self.force_reprocess_checkbox)
         top_controls_layout.addWidget(self.train_button)
 
         # Log y Progreso
@@ -187,18 +196,17 @@ class TrainingDashboardWindow(QWidget):
         self.show_matrix_button.clicked.connect(self.show_confusion_matrix)
 
     def start_keypoint_processing(self):
-        self.log_area.setText("Iniciando flujo completo: Normalización + Keypoints...")
-        self.log_area.append("Este proceso seguirá el flujo correcto del README.md:")
+        skip = not self.force_reprocess_checkbox.isChecked()
+        mode = "completo (reprocesa todo)" if not skip else "incremental (salta gestos sin cambios)"
+        self.log_area.setText(f"Iniciando procesamiento {mode}...")
         self.log_area.append("1. Detectar gestos disponibles")
-        self.log_area.append("2. Normalizar muestras (todas a 15 frames)")
+        self.log_area.append("2. Normalizar muestras a 15 frames")
         self.log_area.append("3. Crear keypoints para entrenamiento")
         self.log_area.append("")
-        self.log_area.append("Detectando gestos con muestras en frame_actions/...")
-        
+
         self.process_keypoints_button.setDisabled(True)
-        
-        # Usar la función unificada que hace normalización + keypoints
-        self.thread = WorkerThread(normalize_and_create_keypoints, progress_callback=True)
+
+        self.thread = WorkerThread(normalize_and_create_keypoints, progress_callback=True, skip_existing=skip)
         self.thread.progress.connect(self.update_progress_from_signal)
         self.thread.finished.connect(self.on_keypoint_processing_finished)
         self.thread.error.connect(self.on_task_error)

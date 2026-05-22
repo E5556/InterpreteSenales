@@ -144,56 +144,63 @@ def clear_directory(directory):
         except Exception as e:
             print(f"Error al eliminar {file_path}: {e}")
 
-def normalize_gesture_samples(gesture_name, target_frame_count=None, progress_callback=None):
+def normalize_gesture_samples(gesture_name, target_frame_count=None, progress_callback=None, skip_existing=True):
     if target_frame_count is None:
         from constants import MODEL_FRAMES
         target_frame_count = MODEL_FRAMES
     """Normalizar muestras de un gesto específico"""
     gesture_path = os.path.join(FRAME_ACTIONS_PATH, gesture_name)
-    
+
     if not os.path.exists(gesture_path):
         return False
-    
-    sample_dirs = [d for d in os.listdir(gesture_path) 
+
+    sample_dirs = [d for d in os.listdir(gesture_path)
                    if os.path.isdir(os.path.join(gesture_path, d))]
-    
+
     total_samples = len(sample_dirs)
-    
+    skipped = 0
+
     for i, sample_name in enumerate(sample_dirs):
-        if progress_callback:
-            progress = i / total_samples
-            progress_callback(progress, f"Normalizando '{gesture_name}' - muestra {i+1}/{total_samples}")
-        
         sample_directory = os.path.join(gesture_path, sample_name)
-        
-        # Leer frames originales
+
+        # Si ya tiene exactamente target_frame_count frames, no reprocesar
+        if skip_existing:
+            existing = get_sorted_image_files(sample_directory)
+            if len(existing) == target_frame_count:
+                skipped += 1
+                if progress_callback:
+                    progress_callback(i / total_samples, f"Saltando '{gesture_name}' - muestra {i+1}/{total_samples} (ya normalizada)")
+                continue
+
+        if progress_callback:
+            progress_callback(i / total_samples, f"Normalizando '{gesture_name}' - muestra {i+1}/{total_samples}")
+
         frames = read_frames_from_directory(sample_directory)
         if not frames:
-            continue  # Saltar si no hay frames
-        
-        # Normalizar frames
+            continue
+
         normalized_frames = normalize_frames(frames, target_frame_count)
-        
-        # Limpiar directorio y guardar frames normalizados
         clear_directory(sample_directory)
         save_normalized_frames(sample_directory, normalized_frames)
-    
+
+    if skipped > 0 and progress_callback:
+        progress_callback(1.0, f"'{gesture_name}': {skipped}/{total_samples} muestras ya estaban normalizadas (saltadas)")
+
     return True
 
-def normalize_all_gestures(gesture_names, progress_callback=None):
+def normalize_all_gestures(gesture_names, progress_callback=None, skip_existing=True):
     """Normalizar muestras de todos los gestos"""
     total_gestures = len(gesture_names)
-    
+
     for i, gesture_name in enumerate(gesture_names):
         if progress_callback:
             base_progress = i / total_gestures
-            def gesture_progress(sub_progress, message):
-                overall_progress = base_progress + (sub_progress / total_gestures)
-                progress_callback(overall_progress, message)
+            def gesture_progress(sub_progress, message, _base=base_progress):
+                progress_callback(_base + (sub_progress / total_gestures), message)
         else:
             gesture_progress = None
-        
-        success = normalize_gesture_samples(gesture_name, MODEL_FRAMES, gesture_progress)
+
+        success = normalize_gesture_samples(gesture_name, MODEL_FRAMES, gesture_progress, skip_existing=skip_existing)
         
         if not success:
             if progress_callback:
@@ -348,51 +355,47 @@ def normalize_and_create_keypoints_single_gesture(gesture_name, progress_callbac
             progress_callback(0.5, f"Error en keypoints: {str(e)}")
         return False
 
-def normalize_and_create_keypoints(progress_callback=None):
+def normalize_and_create_keypoints(progress_callback=None, skip_existing=True):
     """
-    FLUJO COMPLETO: Detecta gestos → Normaliza muestras → Crea keypoints
-    Esta función implementa el flujo correcto del README.md
+    FLUJO COMPLETO: Detecta gestos → Normaliza muestras → Crea keypoints.
+    Con skip_existing=True salta gestos que ya están procesados y sin cambios.
     """
-    # Paso 1: Detectar automáticamente gestos con muestras
     gesture_names = get_gestures_with_samples()
-    
+
     if not gesture_names:
         if progress_callback:
             progress_callback(1.0, "No se encontraron gestos con muestras")
         return False
-    
+
+    mode_label = "incremental (salta gestos sin cambios)" if skip_existing else "completo (reprocesa todo)"
     if progress_callback:
-        progress_callback(0.05, f"Detectados {len(gesture_names)} gestos: {', '.join(gesture_names)}")
-    
-    # Paso 2: Normalizar muestras (0.05 - 0.50)
+        progress_callback(0.05, f"Modo {mode_label} — {len(gesture_names)} gestos detectados: {', '.join(gesture_names)}")
+
+    # Fase 1: Normalización
     if progress_callback:
         progress_callback(0.1, "FASE 1/2: Normalizando muestras...")
-    
+
     def normalize_progress(value, message):
-        # Mapear progreso de normalización a rango 0.1 - 0.5
-        normalized_progress = 0.1 + (value * 0.4)
         if progress_callback:
-            progress_callback(normalized_progress, f"NORMALIZACIÓN: {message}")
-    
+            progress_callback(0.1 + value * 0.4, f"NORMALIZACIÓN: {message}")
+
     try:
-        normalize_all_gestures(gesture_names, normalize_progress)
+        normalize_all_gestures(gesture_names, normalize_progress, skip_existing=skip_existing)
     except Exception as e:
         if progress_callback:
             progress_callback(0.1, f"Error en normalización: {str(e)}")
         return False
-    
-    # Paso 3: Crear keypoints (0.50 - 1.0)
+
+    # Fase 2: Keypoints
     if progress_callback:
         progress_callback(0.5, "FASE 2/2: Creando keypoints...")
-    
+
     def keypoints_progress(value, message):
-        # Mapear progreso de keypoints a rango 0.5 - 1.0
-        keypoints_progress_val = 0.5 + (value * 0.5)
         if progress_callback:
-            progress_callback(keypoints_progress_val, f"KEYPOINTS: {message}")
-    
+            progress_callback(0.5 + value * 0.5, f"KEYPOINTS: {message}")
+
     try:
-        result = create_keypoints_for_gestures(gesture_names, keypoints_progress)
+        result = create_keypoints_for_gestures(gesture_names, keypoints_progress, skip_existing=skip_existing)
         if progress_callback:
             progress_callback(1.0, "¡Proceso completo: Normalización + Keypoints terminado!")
         return result
@@ -403,17 +406,30 @@ def normalize_and_create_keypoints(progress_callback=None):
 
 # --- Lógica de Creación de Keypoints ---
 
-def create_keypoints_for_gestures(gesture_names, progress_callback=None):
+def create_keypoints_for_gestures(gesture_names, progress_callback=None, skip_existing=True):
     """
     Procesa las carpetas de muestras para una lista de gestos y crea los archivos HDF5 de keypoints.
+    Si skip_existing=True, salta gestos cuyo .h5 es más nuevo que sus muestras.
     """
     create_folder(KEYPOINTS_PATH)
     total_gestures = len(gesture_names)
-    
+
     for i, gesture_name in enumerate(gesture_names):
         hdf_path = os.path.join(KEYPOINTS_PATH, f"{gesture_name}.h5")
         frames_path = os.path.join(FRAME_ACTIONS_PATH, gesture_name)
-        
+
+        # Saltar si .h5 existe y es más nuevo que cualquier frame en las muestras
+        if skip_existing and os.path.exists(hdf_path):
+            hdf_mtime = os.path.getmtime(hdf_path)
+            newest_frame = 0.0
+            for root, _, files in os.walk(frames_path):
+                for f in files:
+                    newest_frame = max(newest_frame, os.path.getmtime(os.path.join(root, f)))
+            if hdf_mtime >= newest_frame:
+                if progress_callback:
+                    progress_callback((i + 1) / total_gestures, f"'{gesture_name}' sin cambios — saltado")
+                continue
+
         if progress_callback:
             progress_callback(i / total_gestures, f"Procesando '{gesture_name}'...")
         
