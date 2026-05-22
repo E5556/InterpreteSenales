@@ -514,16 +514,24 @@ def train_model_logic(epochs=500, epoch_callback=None):
     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.1, stratify=y, random_state=42)
     
     model = get_model(int(MODEL_FRAMES), len(word_ids))
-    
-    callbacks = []
+
+    from tensorflow.keras.callbacks import ModelCheckpoint
+    checkpoint = ModelCheckpoint(
+        MODEL_PATH,
+        monitor='val_accuracy',
+        save_best_only=True,
+        mode='max',
+        verbose=0
+    )
+
+    callbacks = [checkpoint]
     if epoch_callback:
         callbacks.append(TrainingCallback(epoch_callback))
 
-    history = model.fit(X_train, y_train, validation_data=(X_val, y_val), 
+    history = model.fit(X_train, y_train, validation_data=(X_val, y_val),
                         epochs=epochs, batch_size=16, callbacks=callbacks, verbose=0)
-    
-    model.save(MODEL_PATH)
-    
+
+    # El modelo ya fue guardado por ModelCheckpoint en su mejor época
     return history.history
 
 # --- Lógica de Visualización ---
