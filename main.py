@@ -91,6 +91,7 @@ class AppController:
         self.capture_window = None
         self.training_dashboard = None
         self.learning_mode_window = None
+        self.gamification_window = None
 
     def start(self):
         self.login_window.show()
@@ -123,6 +124,11 @@ class AppController:
         from learning_mode_window import LearningModeWindow
         self.learning_mode_window = LearningModeWindow()
         self.learning_mode_window.show()
+
+    def show_gamification(self, user_id):
+        from gamification_window import GamificationWindow
+        self.gamification_window = GamificationWindow(user_id, self)
+        self.gamification_window.show()
     
     def show_statistics(self, user_id=None, user_role='user'):
         """Muestra las estadísticas del usuario o del sistema"""
@@ -577,22 +583,32 @@ class VideoRecorder(QMainWindow):
 
     def closeEvent(self, event):
         try:
-            # Detener el timer
             if hasattr(self, 'timer'):
                 self.timer.stop()
-            
-            # Liberar la cámara correctamente
             if hasattr(self, 'capture') and self.capture is not None:
                 self.capture.release()
-            
-            # Cerrar el modelo Holistic
             if hasattr(self, 'holistic_model'):
                 self.holistic_model.close()
-                
         except Exception as e:
             print(f"Error al cerrar recursos: {e}")
-        
-        # Al cerrar con la 'X', también volvemos al menú
+
+        # Registrar puntos de la sesión en background
+        try:
+            gestures = len(self.sentence) if hasattr(self, 'sentence') else 0
+            acc = getattr(self, '_session_avg_confidence', 0.0)
+            if gestures > 0:
+                from gamification_db import award_session_points
+                def _award():
+                    try:
+                        new_ach = award_session_points(self.user_id, self.session_id, gestures, acc)
+                        if new_ach:
+                            print(f"[Gamificación] Logros desbloqueados: {new_ach}")
+                    except Exception as ex:
+                        print(f"[Gamificación] Error al guardar puntos: {ex}")
+                threading.Thread(target=_award, daemon=True).start()
+        except Exception as e:
+            print(f"[Gamificación] Error preparando puntos: {e}")
+
         self.controller.go_back_to_sessions(self.user_id)
         event.accept()
 

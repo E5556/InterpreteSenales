@@ -34,6 +34,7 @@ class SessionsWindow(QWidget):
         button_layout = QHBoxLayout()
         self.new_session_button = QPushButton("🎬 Iniciar Nueva Sesión", self)
         self.learning_mode_button = QPushButton("🎓 Modo de Aprendizaje", self)
+        self.gamification_button = QPushButton("🏆 Mis Logros", self)
         self.logout_button = QPushButton("🚪 Cerrar Sesión", self)
         self.delete_session_button = QPushButton("🗑️ Eliminar Sesión Seleccionada", self)
 
@@ -46,6 +47,7 @@ class SessionsWindow(QWidget):
 
         button_layout.addWidget(self.new_session_button)
         button_layout.addWidget(self.learning_mode_button)
+        button_layout.addWidget(self.gamification_button)
         button_layout.addWidget(self.delete_session_button)
         button_layout.addStretch()
         button_layout.addWidget(self.logout_button)
@@ -56,6 +58,7 @@ class SessionsWindow(QWidget):
         # Conexiones
         self.new_session_button.clicked.connect(self.start_new_session)
         self.learning_mode_button.clicked.connect(self.open_learning_mode)
+        self.gamification_button.clicked.connect(self.open_gamification)
         self.logout_button.clicked.connect(self.logout)
         self.sessions_list.itemClicked.connect(self.view_session_history)
         self.delete_session_button.clicked.connect(self.handle_delete_session)
@@ -102,6 +105,9 @@ class SessionsWindow(QWidget):
             QMessageBox.information(self, "Éxito", "Sesión eliminada correctamente.")
             self.populate_sessions() # Refrescar la lista
             
+    def open_gamification(self):
+        self.controller.show_gamification(self.user_id)
+
     def open_learning_mode(self):
         """Abre la ventana del modo de aprendizaje"""
         try:
