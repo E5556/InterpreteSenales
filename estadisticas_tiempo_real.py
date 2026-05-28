@@ -150,13 +150,17 @@ class EstadisticasTiempoReal:
             # Calcular tiempo real de uso
             tiempo_real = self.calcular_tiempo_real_uso()
             
-            # Precisión promedio (de interpretations)
+            # Precisión promedio — solo sobre las que tienen confidence registrado
             cursor.execute("""
-                SELECT AVG(confidence_score) 
-                FROM interpretations 
-                WHERE confidence_score IS NOT NULL
+                SELECT AVG(confidence_score), COUNT(*),
+                       SUM(CASE WHEN confidence_score IS NULL THEN 1 ELSE 0 END)
+                FROM interpretations
             """)
-            avg_confidence = cursor.fetchone()[0]
+            row_conf = cursor.fetchone()
+            avg_confidence = row_conf[0]
+            total_interp = row_conf[1] or 0
+            sin_confidence = row_conf[2] or 0
+            con_confidence = total_interp - sin_confidence
             precision_percentage = self.safe_round((avg_confidence or 0) * 100, 1)
             
             # Gestos disponibles — solo los que tienen keypoints entrenados (.h5)
@@ -213,6 +217,8 @@ class EstadisticasTiempoReal:
                 'sesiones_calculadas': tiempo_real['sesiones_calculadas'],
                 'tiempo_por_usuario': tiempo_real['tiempo_por_usuario'],
                 'precision_promedio': precision_percentage,
+                'precision_con_datos': con_confidence,
+                'precision_sin_datos': sin_confidence,
                 'gestos_disponibles': total_gestures,
                 'interpretaciones_totales': total_interpretations,
                 'ultima_sesion': last_session,
