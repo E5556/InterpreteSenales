@@ -166,11 +166,13 @@ class AppController:
         self.history_window.show()
 
     def go_back_to_sessions(self, user_id):
-        # Cierra ventanas abiertas y muestra la de sesiones
         if self.main_window:
             self.main_window.close()
         if self.history_window:
             self.history_window.close()
+        if self.sessions_window:
+            self.sessions_window.close()
+            self.sessions_window = None
         self.show_sessions_window(user_id)
     
     def logout(self):
