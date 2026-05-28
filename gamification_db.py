@@ -172,18 +172,30 @@ def _get_gestures_today(user_id):
 
 
 def _get_sessions_today(user_id):
+    # Cuenta sesiones de hoy que tienen al menos 1 interpretación guardada
     db = DatabaseManager()
     rows = db.execute_query(
-        "SELECT COUNT(*) FROM sessions WHERE user_id=? AND DATE(start_time)=DATE('now') AND completion_status='completed'",
+        """SELECT COUNT(DISTINCT s.id) FROM sessions s
+           JOIN interpretations i ON i.session_id = s.id
+           WHERE s.user_id=? AND DATE(s.start_time)=DATE('now')""",
         (user_id,)
     )
     return rows[0][0] if rows else 0
 
 
 def _get_high_accuracy_sessions_today(user_id):
+    # Sesiones de hoy donde el confidence promedio de las interpretaciones >= 0.80
     db = DatabaseManager()
     rows = db.execute_query(
-        "SELECT COUNT(*) FROM sessions WHERE user_id=? AND DATE(start_time)=DATE('now') AND accuracy_rate>=80",
+        """SELECT COUNT(*) FROM (
+               SELECT s.id, AVG(i.confidence_score) as avg_conf
+               FROM sessions s
+               JOIN interpretations i ON i.session_id = s.id
+               WHERE s.user_id=? AND DATE(s.start_time)=DATE('now')
+                 AND i.confidence_score IS NOT NULL
+               GROUP BY s.id
+               HAVING avg_conf >= 0.80
+           )""",
         (user_id,)
     )
     return rows[0][0] if rows else 0
