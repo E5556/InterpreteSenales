@@ -487,6 +487,16 @@ class VideoRecorder(QMainWindow):
                                     self.last_gesture_name = gesture_name
                                     self.last_gesture_time = now
                                     print(f"GESTO RECONOCIDO: {sent} ({pct}%)")
+                                    # Guardar en BD
+                                    try:
+                                        from database import add_interpretation
+                                        add_interpretation(self.session_id, sent, confidence)
+                                    except Exception as _e:
+                                        print(f"[BD] Error guardando interpretación: {_e}")
+                                    # Acumular confidence para gamificación
+                                    self._conf_sum = getattr(self, '_conf_sum', 0.0) + confidence
+                                    self._conf_count = getattr(self, '_conf_count', 0) + 1
+                                    self._session_avg_confidence = self._conf_sum / self._conf_count
 
                     self.prediction_filter.reset()
 

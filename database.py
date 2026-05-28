@@ -214,26 +214,23 @@ def create_session(user_id):
     conn.close()
     return session_id
 
-def add_interpretation(session_id, word):
+def add_interpretation(session_id, word, confidence=None):
     """Agrega una palabra interpretada a una sesión."""
     conn = sqlite3.connect(get_database_name())
     cursor = conn.cursor()
-    
-    # Verificar estructura de la tabla para compatibilidad
+
     cursor.execute("PRAGMA table_info(interpretations)")
     columns = [col[1] for col in cursor.fetchall()]
-    
+
     if 'word_detected' in columns:
-        # Base de datos expandida
         cursor.execute("""
-            INSERT INTO interpretations 
-            (session_id, word_detected, confidence_score, timestamp) 
+            INSERT INTO interpretations
+            (session_id, word_detected, confidence_score, timestamp)
             VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        """, (session_id, word, 0.95))
+        """, (session_id, word, confidence))
     else:
-        # Base de datos original
         cursor.execute("INSERT INTO interpretations (session_id, word) VALUES (?, ?)", (session_id, word))
-    
+
     conn.commit()
     conn.close()
 
