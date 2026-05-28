@@ -91,6 +91,7 @@ class SessionsWindow(QWidget):
         sb.addWidget(sep)
         sb.addSpacing(10)
 
+        self.btn_perfil    = SidebarBtn("👤", "Mi Perfil")
         self.btn_sessions  = SidebarBtn("📋", "Mis Sesiones")
         self.btn_new       = SidebarBtn("🎬", "Nueva Sesión")
         self.btn_learning  = SidebarBtn("🎓", "Modo Aprendizaje")
@@ -99,7 +100,7 @@ class SessionsWindow(QWidget):
         self.btn_historial = SidebarBtn("📜", "Historial de puntos")
 
         self._nav_btns = [
-            self.btn_sessions, self.btn_new, self.btn_learning,
+            self.btn_perfil, self.btn_sessions, self.btn_new, self.btn_learning,
             self.btn_logros, self.btn_retos, self.btn_historial
         ]
         for btn in self._nav_btns:
@@ -134,26 +135,29 @@ class SessionsWindow(QWidget):
         self.stack.setStyleSheet(f"background:{C_BG};")
         root.addWidget(self.stack)
 
+        self._page_perfil    = self._build_scroll_page(self._build_perfil_content)
         self._page_sessions  = self._build_page_sessions()
         self._page_logros    = self._build_scroll_page(self._build_logros_content)
         self._page_retos     = self._build_scroll_page(self._build_retos_content)
         self._page_historial = self._build_scroll_page(self._build_historial_content)
 
-        self.stack.addWidget(self._page_sessions)   # 0
-        self.stack.addWidget(self._page_logros)     # 1
-        self.stack.addWidget(self._page_retos)      # 2
-        self.stack.addWidget(self._page_historial)  # 3
+        self.stack.addWidget(self._page_perfil)     # 0
+        self.stack.addWidget(self._page_sessions)   # 1
+        self.stack.addWidget(self._page_logros)     # 2
+        self.stack.addWidget(self._page_retos)      # 3
+        self.stack.addWidget(self._page_historial)  # 4
 
         # Conexiones sidebar
-        self.btn_sessions.clicked.connect(lambda: self._go(0, self.btn_sessions))
+        self.btn_perfil.clicked.connect(lambda: self._go(0, self.btn_perfil))
+        self.btn_sessions.clicked.connect(lambda: self._go(1, self.btn_sessions))
         self.btn_new.clicked.connect(self.start_new_session)
         self.btn_learning.clicked.connect(self.open_learning_mode)
-        self.btn_logros.clicked.connect(lambda: self._go(1, self.btn_logros))
-        self.btn_retos.clicked.connect(lambda: self._go(2, self.btn_retos))
-        self.btn_historial.clicked.connect(lambda: self._go(3, self.btn_historial))
+        self.btn_logros.clicked.connect(lambda: self._go(2, self.btn_logros))
+        self.btn_retos.clicked.connect(lambda: self._go(3, self.btn_retos))
+        self.btn_historial.clicked.connect(lambda: self._go(4, self.btn_historial))
         self.btn_logout.clicked.connect(self.logout)
 
-        self._go(0, self.btn_sessions)
+        self._go(0, self.btn_perfil)  # Inicia en Mi Perfil
         self._load_username()
 
     # ── NAVEGACIÓN ────────────────────────────────────────────
@@ -203,6 +207,81 @@ class SessionsWindow(QWidget):
         return scroll
 
     # ── PÁGINA: LOGROS ────────────────────────────────────────
+    # ── PÁGINA: PERFIL ────────────────────────────────────────
+    def _build_perfil_content(self, lay):
+        from gamification_db import get_user_gamification_profile, LEVELS, seed_default_achievements
+        seed_default_achievements()
+        p = get_user_gamification_profile(self.user_id)
+
+        lay.addWidget(_lbl("Mi Perfil", 20, bold=True))
+
+        # Tarjeta hero
+        hero = QFrame()
+        hero.setStyleSheet(f"QFrame{{background:{C_CARD_BG};border-radius:14px;border:1px solid {C_BORDER};}}")
+        hl = QVBoxLayout(hero)
+        hl.setContentsMargins(24, 20, 24, 20)
+        hl.setSpacing(12)
+
+        row = QHBoxLayout()
+        emoji = LEVEL_EMOJIS[min(p["level_num"], len(LEVEL_EMOJIS)-1)]
+        avatar = QLabel(emoji)
+        avatar.setAlignment(Qt.AlignCenter)
+        avatar.setFixedSize(80, 80)
+        avatar.setFont(QFont("Segoe UI", 34))
+        avatar.setStyleSheet(f"background:{C_ACCENT};border-radius:40px;color:white;")
+        row.addWidget(avatar)
+
+        info = QVBoxLayout()
+        info.setSpacing(4)
+        info.addWidget(_lbl(p["username"], 22, bold=True))
+        info.addWidget(_lbl(f"Nivel {p['level_num']} — {p['level_name']}", 13, color=C_ACCENT))
+        info.addWidget(_lbl(f"🔥 Racha: {p['daily_streak']} día(s) consecutivo(s)", 12, color=C_TEXT_MUTED))
+        row.addLayout(info)
+        row.addStretch()
+
+        pts_col = QVBoxLayout()
+        pts_col.setAlignment(Qt.AlignCenter)
+        pts_col.addWidget(_lbl(str(p["total_points"]), 34, bold=True, color=C_ACCENT))
+        pts_col.addWidget(_lbl("puntos totales", 11, color=C_TEXT_MUTED))
+        row.addLayout(pts_col)
+        hl.addLayout(row)
+
+        hl.addWidget(_lbl(f"Progreso al nivel {p['level_num']+1}", 11, color=C_TEXT_MUTED))
+        bar = QProgressBar()
+        bar.setValue(p["progress_pct"])
+        bar.setFixedHeight(10)
+        bar.setTextVisible(False)
+        bar.setStyleSheet(
+            f"QProgressBar{{background:{C_BORDER};border-radius:5px;}}"
+            f"QProgressBar::chunk{{background:{C_ACCENT};border-radius:5px;}}"
+        )
+        hl.addWidget(bar)
+        hl.addWidget(_lbl(f"{p['total_points']} / {p['next_level_points']} pts", 11, color=C_TEXT_MUTED))
+        lay.addWidget(hero)
+
+        # Tabla de niveles
+        lvl_card = QFrame()
+        lvl_card.setStyleSheet(f"QFrame{{background:{C_CARD_BG};border-radius:14px;border:1px solid {C_BORDER};}}")
+        lc = QVBoxLayout(lvl_card)
+        lc.setContentsMargins(24, 18, 24, 18)
+        lc.setSpacing(10)
+        lc.addWidget(_lbl("Sistema de Niveles", 15, bold=True))
+        grid = QGridLayout()
+        grid.setSpacing(8)
+        for i, (num, name, req) in enumerate(LEVELS):
+            em = LEVEL_EMOJIS[min(num, len(LEVEL_EMOJIS)-1)]
+            active = num == p["level_num"]
+            lbl = QLabel(f"{em} Nivel {num}: {name}  •  {req} pts")
+            lbl.setFont(QFont("Segoe UI", 12))
+            lbl.setStyleSheet(
+                f"background:{C_ACCENT if active else C_BORDER};"
+                f"color:{'white' if active else C_TEXT_DARK};"
+                f"border-radius:8px;padding:6px 12px;"
+            )
+            grid.addWidget(lbl, i // 2, i % 2)
+        lc.addLayout(grid)
+        lay.addWidget(lvl_card)
+
     def _build_logros_content(self, lay):
         from gamification_db import get_all_achievements, get_user_achievements, seed_default_achievements
         seed_default_achievements()
