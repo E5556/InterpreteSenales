@@ -434,6 +434,15 @@ class SessionsWindow(QWidget):
                 self._username_label.setText((row[1] or row[0]).capitalize())
         except Exception:
             pass
+        # Sincronizar logros con datos históricos reales (en background)
+        try:
+            import threading
+            from gamification_db import sync_user_gamification
+            threading.Thread(
+                target=sync_user_gamification, args=(self.user_id,), daemon=True
+            ).start()
+        except Exception:
+            pass
 
     def _blank_icon(self):
         px = QPixmap(32, 32); px.fill(Qt.transparent)

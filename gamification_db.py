@@ -161,14 +161,14 @@ def get_daily_challenges(user_id):
 
 
 def _get_gestures_today(user_id):
-    # Estima gestos hoy sumando pts de sesión del día (2 pts/gesto)
     db = DatabaseManager()
     rows = db.execute_query(
-        "SELECT COALESCE(SUM(points_earned), 0) FROM points_history WHERE user_id=? AND points_type='session' AND DATE(earned_date)=DATE('now')",
+        """SELECT COUNT(*) FROM interpretations i
+           JOIN sessions s ON i.session_id = s.id
+           WHERE s.user_id = ? AND DATE(i.timestamp) = DATE('now')""",
         (user_id,)
     )
-    pts = rows[0][0] if rows else 0
-    return max(0, pts // 2)  # aproximado
+    return rows[0][0] if rows else 0
 
 
 def _get_sessions_today(user_id):
@@ -251,20 +251,49 @@ def _update_daily_streak(user_id):
     )
 
 
+def _get_real_gestures_total(user_id):
+    """Cuenta interpretaciones reales desde la tabla interpretations."""
+    db = DatabaseManager()
+    rows = db.execute_query(
+        """SELECT COUNT(*) FROM interpretations i
+           JOIN sessions s ON i.session_id = s.id
+           WHERE s.user_id = ?""",
+        (user_id,)
+    )
+    return rows[0][0] if rows else 0
+
+
+def _get_real_sessions_completed(user_id):
+    db = DatabaseManager()
+    rows = db.execute_query(
+        "SELECT COUNT(*) FROM sessions WHERE user_id=?",
+        (user_id,)
+    )
+    return rows[0][0] if rows else 0
+
+
+def _get_best_accuracy(user_id):
+    """Mejor accuracy_rate registrada en sesiones del usuario (0-100)."""
+    db = DatabaseManager()
+    rows = db.execute_query(
+        "SELECT MAX(accuracy_rate) FROM sessions WHERE user_id=? AND accuracy_rate IS NOT NULL",
+        (user_id,)
+    )
+    return rows[0][0] or 0 if rows else 0
+
+
 def _check_gamification_achievements(user_id, gestures_session, accuracy):
     db = DatabaseManager()
 
-    # Total de gestos estimado desde historial de puntos (2 pts/gesto)
-    rows = db.execute_query(
-        "SELECT COALESCE(SUM(points_earned), 0) FROM points_history WHERE user_id=? AND points_type='session'",
-        (user_id,)
-    )
-    gestures_total = max(0, (rows[0][0] or 0) // 2) + gestures_session
+    # Métricas reales desde la BD
+    gestures_total   = _get_real_gestures_total(user_id) + gestures_session
+    sessions_completed = _get_real_sessions_completed(user_id)
+    best_accuracy    = max(_get_best_accuracy(user_id), int(accuracy * 100))
 
     streak_rows = db.execute_query(
         "SELECT daily_streak FROM user_points WHERE user_id=?", (user_id,)
     )
-    streak = streak_rows[0][0] if streak_rows else 0
+    streak = (streak_rows[0][0] or 0) if streak_rows else 0
 
     all_ach = db.execute_query(
         "SELECT id, achievement_name, requirements, points_value FROM achievements WHERE is_active=1"
@@ -284,14 +313,18 @@ def _check_gamification_achievements(user_id, gestures_session, accuracy):
             reqs = json.loads(reqs_json) if reqs_json else {}
             earned = False
 
-            if "gestures_total" in reqs and gestures_total >= reqs["gestures_total"]:
-                earned = True
-            elif "gestures_session" in reqs and gestures_session >= reqs["gestures_session"]:
-                earned = True
-            elif "daily_streak" in reqs and streak >= reqs["daily_streak"]:
-                earned = True
-            elif "accuracy_rate" in reqs and int(accuracy * 100) >= reqs["accuracy_rate"]:
-                earned = True
+            if "gestures_total" in reqs:
+                earned = gestures_total >= reqs["gestures_total"]
+            elif "gestures_session" in reqs:
+                earned = gestures_session >= reqs["gestures_session"]
+            elif "sessions_completed" in reqs:
+                earned = sessions_completed >= reqs["sessions_completed"]
+            elif "daily_streak" in reqs:
+                earned = streak >= reqs["daily_streak"]
+            elif "accuracy_rate" in reqs:
+                earned = best_accuracy >= reqs["accuracy_rate"]
+            # Logros que requieren métricas no implementadas se omiten silenciosamente
+            # (gestures_mastered, features_used, users_helped, etc.)
 
             if earned:
                 cursor.execute(
@@ -307,3 +340,9 @@ def _check_gamification_achievements(user_id, gestures_session, accuracy):
         conn.close()
 
     return new_achievements
+
+
+def sync_user_gamification(user_id):
+    """Recalcula y asigna logros pendientes usando datos históricos reales.
+    Llamar una vez para sincronizar usuarios con sesiones previas a la gamificación."""
+    return _check_gamification_achievements(user_id, 0, 0.0)
