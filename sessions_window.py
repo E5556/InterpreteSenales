@@ -51,7 +51,7 @@ class SidebarBtn(QPushButton):
         """)
 
 
-def _lbl(text, size=13, bold=False, color=C_TEXT_DARK, wrap=False):
+def _lbl(text, size=13, bold=False, color=C_TEXT_DARK, wrap=False, align=None):
     l = QLabel(text)
     f = QFont("Segoe UI", size)
     f.setBold(bold)
@@ -59,6 +59,8 @@ def _lbl(text, size=13, bold=False, color=C_TEXT_DARK, wrap=False):
     l.setStyleSheet(f"color:{color}; background:transparent;")
     if wrap:
         l.setWordWrap(True)
+    if align is not None:
+        l.setAlignment(align)
     return l
 
 
@@ -107,15 +109,19 @@ class SessionsWindow(QWidget):
         self.btn_logros    = SidebarBtn("🏆", "Mis Logros")
         self.btn_retos     = SidebarBtn("🎯", "Retos del día")
         self.btn_historial = SidebarBtn("📜", "Historial de puntos")
-        self.btn_gestos    = SidebarBtn("📊", "Mis Gestos")
-        self.btn_ranking   = SidebarBtn("🏅", "Ranking")
-        self.btn_eval      = SidebarBtn("📝", "Modo Evaluación")
-        self.btn_evals     = SidebarBtn("📈", "Mis Evaluaciones")
+        self.btn_gestos      = SidebarBtn("📊", "Mis Gestos")
+        self.btn_ranking     = SidebarBtn("🏅", "Ranking")
+        self.btn_eval        = SidebarBtn("📝", "Modo Evaluación")
+        self.btn_evals       = SidebarBtn("📈", "Mis Evaluaciones")
+        self.btn_comparativa = SidebarBtn("📉", "Comparativa")
+        self.btn_meta        = SidebarBtn("🎯", "Mi Meta Diaria")
+        self.btn_practica    = SidebarBtn("🤟", "Modo Práctica")
 
         self._nav_btns = [
             self.btn_perfil, self.btn_sessions, self.btn_new, self.btn_learning,
             self.btn_logros, self.btn_retos, self.btn_historial,
             self.btn_gestos, self.btn_ranking, self.btn_eval, self.btn_evals,
+            self.btn_comparativa, self.btn_meta, self.btn_practica,
         ]
         for btn in self._nav_btns:
             sb.addWidget(btn)
@@ -154,18 +160,22 @@ class SessionsWindow(QWidget):
         self._page_logros    = self._build_scroll_page(self._build_logros_content)
         self._page_retos     = self._build_scroll_page(self._build_retos_content)
         self._page_historial = self._build_scroll_page(self._build_historial_content)
-        self._page_gestos    = self._build_scroll_page(self._build_gestos_content)
-        self._page_ranking   = self._build_scroll_page(self._build_ranking_content)
-        self._page_evals     = self._build_scroll_page(self._build_evals_content)
+        self._page_gestos      = self._build_scroll_page(self._build_gestos_content)
+        self._page_ranking     = self._build_scroll_page(self._build_ranking_content)
+        self._page_evals       = self._build_scroll_page(self._build_evals_content)
+        self._page_comparativa = self._build_scroll_page(self._build_comparativa_content)
+        self._page_meta        = self._build_scroll_page(self._build_meta_content)
 
-        self.stack.addWidget(self._page_perfil)     # 0
-        self.stack.addWidget(self._page_sessions)   # 1
-        self.stack.addWidget(self._page_logros)     # 2
-        self.stack.addWidget(self._page_retos)      # 3
-        self.stack.addWidget(self._page_historial)  # 4
-        self.stack.addWidget(self._page_gestos)     # 5
-        self.stack.addWidget(self._page_ranking)    # 6
-        self.stack.addWidget(self._page_evals)      # 7
+        self.stack.addWidget(self._page_perfil)       # 0
+        self.stack.addWidget(self._page_sessions)     # 1
+        self.stack.addWidget(self._page_logros)       # 2
+        self.stack.addWidget(self._page_retos)        # 3
+        self.stack.addWidget(self._page_historial)    # 4
+        self.stack.addWidget(self._page_gestos)       # 5
+        self.stack.addWidget(self._page_ranking)      # 6
+        self.stack.addWidget(self._page_evals)        # 7
+        self.stack.addWidget(self._page_comparativa)  # 8
+        self.stack.addWidget(self._page_meta)         # 9
 
         # Conexiones sidebar
         self.btn_perfil.clicked.connect(lambda: self._go(0, self.btn_perfil))
@@ -179,6 +189,9 @@ class SessionsWindow(QWidget):
         self.btn_ranking.clicked.connect(lambda: self._go(6, self.btn_ranking))
         self.btn_eval.clicked.connect(self.open_evaluation_mode)
         self.btn_evals.clicked.connect(lambda: self._go(7, self.btn_evals))
+        self.btn_comparativa.clicked.connect(lambda: self._go(8, self.btn_comparativa))
+        self.btn_meta.clicked.connect(lambda: self._go(9, self.btn_meta))
+        self.btn_practica.clicked.connect(lambda: self.open_practice_mode(None))
         self.btn_logout.clicked.connect(self.logout)
 
         self._go(0, self.btn_perfil)  # Inicia en Mi Perfil
@@ -305,6 +318,61 @@ class SessionsWindow(QWidget):
             grid.addWidget(lbl, i // 2, i % 2)
         lc.addLayout(grid)
         lay.addWidget(lvl_card)
+
+        # Botón editar perfil
+        btn_edit = QPushButton("✏️  Editar mi perfil")
+        btn_edit.setFixedHeight(40)
+        btn_edit.setCursor(Qt.PointingHandCursor)
+        btn_edit.setFont(QFont("Segoe UI", 12))
+        btn_edit.setStyleSheet(
+            f"QPushButton{{background:{C_CARD_BG};color:{C_ACCENT};border:1px solid {C_ACCENT};border-radius:8px;}}"
+            f"QPushButton:hover{{background:{C_ACCENT};color:white;}}"
+        )
+        btn_edit.clicked.connect(self._open_edit_profile)
+        lay.addWidget(btn_edit)
+
+        # Estadísticas adicionales
+        stats_card = QFrame()
+        stats_card.setStyleSheet(f"QFrame{{background:{C_CARD_BG};border-radius:14px;border:1px solid {C_BORDER};}}")
+        sc = QVBoxLayout(stats_card)
+        sc.setContentsMargins(24, 16, 24, 16)
+        sc.setSpacing(8)
+        sc.addWidget(_lbl("📊 Estadísticas de uso", 15, bold=True))
+        try:
+            import sqlite3
+            from config import get_database_path
+            conn = sqlite3.connect(get_database_path())
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM sessions WHERE user_id=?", (self.user_id,))
+            total_sesiones = cur.fetchone()[0] or 0
+            cur.execute("""SELECT COUNT(*) FROM interpretations i
+                           JOIN sessions s ON i.session_id=s.id WHERE s.user_id=?""", (self.user_id,))
+            total_gestos = cur.fetchone()[0] or 0
+            cur.execute("""SELECT MIN(DATE(s.start_time)) FROM sessions WHERE user_id=?""", (self.user_id,))
+            primer_dia = cur.fetchone()[0] or "—"
+            cur.execute("SELECT longest_streak FROM user_points WHERE user_id=?", (self.user_id,))
+            r = cur.fetchone()
+            mejor_racha = r[0] if r else 0
+            conn.close()
+            sg = QGridLayout()
+            sg.setSpacing(10)
+            for i, (label, val) in enumerate([
+                ("📅 Sesiones totales", str(total_sesiones)),
+                ("✋ Gestos totales", str(total_gestos)),
+                ("🗓️ Miembro desde", str(primer_dia)[:10]),
+                ("🔥 Mejor racha", f"{mejor_racha} días"),
+            ]):
+                chip = QFrame()
+                chip.setStyleSheet(f"QFrame{{background:#f1f5f9;border-radius:10px;}}")
+                cl2 = QVBoxLayout(chip)
+                cl2.setContentsMargins(12, 8, 12, 8)
+                cl2.addWidget(_lbl(label, 10, color=C_TEXT_MUTED))
+                cl2.addWidget(_lbl(val, 16, bold=True, color=C_TEXT_DARK))
+                sg.addWidget(chip, i // 2, i % 2)
+            sc.addLayout(sg)
+        except Exception:
+            sc.addWidget(_lbl("No se pudieron cargar las estadísticas.", 12, color=C_TEXT_MUTED))
+        lay.addWidget(stats_card)
 
         # Gráfica de progreso histórico
         if _MATPLOTLIB_OK:
@@ -539,6 +607,16 @@ class SessionsWindow(QWidget):
             stats_row.addWidget(_lbl(f"Mejor: {mejor:.1f}%", 11, color=C_SUCCESS))
             stats_row.addWidget(_lbl(f"  Peor: {peor:.1f}%", 11, color=C_DANGER))
             stats_row.addStretch()
+            btn_prac = QPushButton("🤟 Practicar")
+            btn_prac.setFixedHeight(28)
+            btn_prac.setCursor(Qt.PointingHandCursor)
+            btn_prac.setFont(QFont("Segoe UI", 10))
+            btn_prac.setStyleSheet(
+                f"QPushButton{{background:transparent;color:{color};border:1px solid {color};border-radius:6px;padding:0 10px;}}"
+                f"QPushButton:hover{{background:{color};color:white;}}"
+            )
+            btn_prac.clicked.connect(lambda _, w=word: self.open_practice_mode(w))
+            stats_row.addWidget(btn_prac)
             cl.addLayout(stats_row)
 
             lay.addWidget(card)
@@ -638,6 +716,234 @@ class SessionsWindow(QWidget):
             self.controller.show_history_window(session_id)
             self.close()
 
+    # ── PÁGINA: COMPARATIVA DE SESIONES ─────────────────────────
+    def _build_comparativa_content(self, lay):
+        import sqlite3
+        from config import get_database_path
+
+        lay.addWidget(_lbl("📉 Comparativa de Sesiones", 20, bold=True))
+        lay.addWidget(_lbl("Evolución de gestos y precisión a lo largo de tus sesiones", 12, color=C_TEXT_MUTED))
+
+        try:
+            conn = sqlite3.connect(get_database_path())
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT s.id, s.start_time,
+                       COUNT(i.id) as gestos,
+                       AVG(i.confidence_score)*100 as precision_prom
+                FROM sessions s
+                LEFT JOIN interpretations i ON i.session_id = s.id
+                WHERE s.user_id = ?
+                GROUP BY s.id
+                ORDER BY s.start_time ASC
+                LIMIT 20
+            """, (self.user_id,))
+            rows = cur.fetchall()
+            conn.close()
+        except Exception:
+            rows = []
+
+        if not rows or all(r[2] == 0 for r in rows):
+            lay.addWidget(_lbl("Aún no tienes suficientes sesiones para comparar.\nInicia varias sesiones para ver tu evolución.", 13, color=C_TEXT_MUTED, wrap=True))
+            return
+
+        # Tarjetas por sesión
+        for i, (sid, ts, gestos, prec) in enumerate(rows):
+            fecha = str(ts)[:16] if ts else f"Sesión {sid}"
+            prec_val = prec or 0.0
+            card = QFrame()
+            card.setStyleSheet(f"QFrame{{background:{C_CARD_BG};border-radius:12px;border:1px solid {C_BORDER};}}")
+            cl = QVBoxLayout(card)
+            cl.setContentsMargins(18, 12, 18, 12)
+            cl.setSpacing(6)
+
+            hrow = QHBoxLayout()
+            hrow.addWidget(_lbl(f"Sesión {i+1}", 13, bold=True))
+            hrow.addStretch()
+            hrow.addWidget(_lbl(fecha, 11, color=C_TEXT_MUTED))
+            cl.addLayout(hrow)
+
+            stats_row = QHBoxLayout()
+            stats_row.addWidget(_lbl(f"✋ {gestos} gestos", 12, color=C_ACCENT))
+            stats_row.addSpacing(16)
+
+            prec_color = C_SUCCESS if prec_val >= 80 else ("#f59e0b" if prec_val >= 60 else C_DANGER)
+            stats_row.addWidget(_lbl(f"🎯 {prec_val:.1f}% precisión", 12, color=prec_color))
+            stats_row.addStretch()
+            cl.addLayout(stats_row)
+
+            # Barra de gestos relativa al máximo
+            max_gestos = max(r[2] for r in rows) or 1
+            bar = QProgressBar()
+            bar.setMaximum(max_gestos)
+            bar.setValue(gestos)
+            bar.setFixedHeight(8)
+            bar.setTextVisible(False)
+            bar.setStyleSheet(
+                f"QProgressBar{{background:{C_BORDER};border-radius:4px;}}"
+                f"QProgressBar::chunk{{background:{C_ACCENT};border-radius:4px;}}"
+            )
+            cl.addWidget(bar)
+            lay.addWidget(card)
+
+        # Gráfica matplotlib si hay datos suficientes
+        if _MATPLOTLIB_OK and len(rows) >= 2:
+            try:
+                nums   = list(range(1, len(rows)+1))
+                gestos_list = [r[2] for r in rows]
+                prec_list   = [r[3] or 0 for r in rows]
+
+                fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6.5, 3.5), sharex=True)
+                fig.patch.set_facecolor("#ffffff")
+                for ax in (ax1, ax2):
+                    ax.set_facecolor("#f8fafc")
+                    for spine in ax.spines.values():
+                        spine.set_edgecolor("#e2e8f0")
+                    ax.grid(axis="y", linestyle="--", alpha=0.4, color="#e2e8f0")
+
+                ax1.bar(nums, gestos_list, color="#7c3aed", alpha=0.85)
+                ax1.set_ylabel("Gestos", fontsize=9, color="#64748b")
+                ax1.tick_params(labelsize=8, colors="#64748b")
+
+                ax2.plot(nums, prec_list, color="#22c55e", linewidth=2, marker="o", markersize=4)
+                ax2.fill_between(nums, prec_list, alpha=0.1, color="#22c55e")
+                ax2.set_ylabel("Precisión %", fontsize=9, color="#64748b")
+                ax2.set_xlabel("Sesión", fontsize=9, color="#64748b")
+                ax2.tick_params(labelsize=8, colors="#64748b")
+                ax2.set_ylim(0, 105)
+
+                fig.tight_layout(pad=1.2)
+
+                chart_card = QFrame()
+                chart_card.setStyleSheet(f"QFrame{{background:{C_CARD_BG};border-radius:14px;border:1px solid {C_BORDER};}}")
+                cc = QVBoxLayout(chart_card)
+                cc.setContentsMargins(16, 12, 16, 12)
+                cc.addWidget(_lbl("📈 Evolución por sesión", 14, bold=True))
+                canvas = FigureCanvas(fig)
+                canvas.setFixedHeight(260)
+                cc.addWidget(canvas)
+                lay.addWidget(chart_card)
+                plt.close(fig)
+            except Exception:
+                pass
+
+    # ── PÁGINA: MI META DIARIA ───────────────────────────────────
+    def _build_meta_content(self, lay):
+        import sqlite3
+        from config import get_database_path
+        from gamification_db import _get_gestures_today
+
+        lay.addWidget(_lbl("🎯 Mi Meta Diaria", 20, bold=True))
+        lay.addWidget(_lbl("Establece cuántos gestos quieres hacer hoy", 12, color=C_TEXT_MUTED))
+
+        # Leer meta guardada
+        meta_actual = self._load_meta()
+        gestos_hoy  = _get_gestures_today(self.user_id)
+
+        # Tarjeta de progreso
+        prog_card = QFrame()
+        prog_card.setStyleSheet(f"QFrame{{background:{C_CARD_BG};border-radius:14px;border:1px solid {C_BORDER};}}")
+        pc = QVBoxLayout(prog_card)
+        pc.setContentsMargins(24, 20, 24, 20)
+        pc.setSpacing(10)
+
+        done = meta_actual > 0 and gestos_hoy >= meta_actual
+        pct  = min(100, int(gestos_hoy / meta_actual * 100)) if meta_actual > 0 else 0
+        color = C_SUCCESS if done else C_ACCENT
+
+        pc.addWidget(_lbl(
+            f"{'✅ ¡Meta cumplida!' if done else f'En progreso — {gestos_hoy} de {meta_actual} gestos'}",
+            16, bold=True, color=color, align=Qt.AlignCenter
+        ))
+
+        bar = QProgressBar()
+        bar.setMaximum(max(meta_actual, 1))
+        bar.setValue(gestos_hoy)
+        bar.setFixedHeight(18)
+        bar.setFormat(f"  {gestos_hoy} / {meta_actual}")
+        bar.setTextVisible(True)
+        bar.setStyleSheet(
+            f"QProgressBar{{background:{C_BORDER};border-radius:9px;color:{C_TEXT_DARK};font-weight:bold;font-size:12px;}}"
+            f"QProgressBar::chunk{{background:{color};border-radius:9px;}}"
+        )
+        pc.addWidget(bar)
+        lay.addWidget(prog_card)
+
+        # Selector de meta
+        lay.addSpacing(8)
+        lay.addWidget(_lbl("Cambiar meta diaria:", 13, bold=True))
+
+        metas = [5, 10, 15, 20, 30, 50]
+        btn_row = QHBoxLayout()
+        for m in metas:
+            btn = QPushButton(str(m))
+            btn.setFixedHeight(40)
+            btn.setFixedWidth(60)
+            btn.setCursor(Qt.PointingHandCursor)
+            is_active = (m == meta_actual)
+            btn.setStyleSheet(
+                f"QPushButton{{background:{C_ACCENT if is_active else C_CARD_BG};"
+                f"color:{'white' if is_active else C_TEXT_DARK};"
+                f"border:1px solid {C_ACCENT};border-radius:8px;font-size:13px;font-weight:bold;}}"
+                f"QPushButton:hover{{background:{C_ACCENT};color:white;}}"
+            )
+            btn.clicked.connect(lambda _, v=m: self._save_meta(v))
+            btn_row.addWidget(btn)
+        btn_row.addStretch()
+        lay.addLayout(btn_row)
+
+        lay.addWidget(_lbl(
+            "La meta se reinicia cada día. Inicia una sesión para sumar gestos.",
+            11, color=C_TEXT_MUTED, wrap=True
+        ))
+
+    def _load_meta(self):
+        """Lee la meta diaria del usuario desde BD (tabla user_meta)."""
+        try:
+            import sqlite3
+            from config import get_database_path
+            conn = sqlite3.connect(get_database_path())
+            cur = conn.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS user_meta
+                (user_id INTEGER PRIMARY KEY, daily_goal INTEGER DEFAULT 10)
+            """)
+            cur.execute("SELECT daily_goal FROM user_meta WHERE user_id=?", (self.user_id,))
+            r = cur.fetchone()
+            conn.commit()
+            conn.close()
+            return r[0] if r else 10
+        except Exception:
+            return 10
+
+    def _save_meta(self, value):
+        """Guarda la meta diaria y recarga la página."""
+        try:
+            import sqlite3
+            from config import get_database_path
+            conn = sqlite3.connect(get_database_path())
+            cur = conn.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS user_meta
+                (user_id INTEGER PRIMARY KEY, daily_goal INTEGER DEFAULT 10)
+            """)
+            cur.execute(
+                "INSERT OR REPLACE INTO user_meta (user_id, daily_goal) VALUES (?,?)",
+                (self.user_id, value)
+            )
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+        # Recargar página de meta
+        idx = self.stack.indexOf(self._page_meta)
+        self._page_meta = self._build_scroll_page(self._build_meta_content)
+        self.stack.insertWidget(idx, self._page_meta)
+        old = self.stack.widget(idx + 1)
+        self.stack.removeWidget(old)
+        old.deleteLater()
+        self.stack.setCurrentIndex(idx)
+
     # ── PÁGINA: MIS EVALUACIONES ─────────────────────────────────
     def _build_evals_content(self, lay):
         import json
@@ -715,6 +1021,16 @@ class SessionsWindow(QWidget):
 
             lay.addWidget(card)
 
+    def open_practice_mode(self, gesture=None):
+        self.btn_practica.setChecked(True)
+        try:
+            from practice_mode_window import PracticeModeWindow
+            self._practice_window = PracticeModeWindow(self.user_id, target_gesture=gesture, controller=self.controller)
+            self._practice_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo abrir el modo práctica:\n{str(e)}")
+        self.btn_practica.setChecked(False)
+
     def open_evaluation_mode(self):
         self.btn_eval.setChecked(True)
         try:
@@ -739,6 +1055,86 @@ class SessionsWindow(QWidget):
         self.controller.logout()
         self.close()
 
+    def _open_edit_profile(self):
+        from PyQt5.QtWidgets import QDialog, QDialogButtonBox, QLineEdit, QComboBox
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Editar perfil")
+        dlg.setMinimumWidth(360)
+        dlg.setStyleSheet(f"background:{C_BG};")
+        dl = QVBoxLayout(dlg)
+        dl.setContentsMargins(24, 20, 24, 20)
+        dl.setSpacing(12)
+        dl.addWidget(_lbl("Editar mi perfil", 16, bold=True))
+
+        # Leer datos actuales
+        try:
+            import sqlite3
+            from config import get_database_path
+            conn = sqlite3.connect(get_database_path())
+            cur = conn.cursor()
+            cur.execute("SELECT first_name, last_name, email FROM users WHERE id=?", (self.user_id,))
+            row = cur.fetchone()
+            conn.close()
+            fn, ln, em = (row[0] or ""), (row[1] or ""), (row[2] or "")
+        except Exception:
+            fn, ln, em = "", "", ""
+
+        dl.addWidget(_lbl("Nombre", 11, color=C_TEXT_MUTED))
+        inp_fn = QLineEdit(fn)
+        inp_fn.setPlaceholderText("Nombre")
+        inp_fn.setStyleSheet(f"border:1px solid {C_BORDER};border-radius:8px;padding:8px;font-size:13px;background:white;")
+        dl.addWidget(inp_fn)
+
+        dl.addWidget(_lbl("Apellido", 11, color=C_TEXT_MUTED))
+        inp_ln = QLineEdit(ln)
+        inp_ln.setPlaceholderText("Apellido")
+        inp_ln.setStyleSheet(inp_fn.styleSheet())
+        dl.addWidget(inp_ln)
+
+        dl.addWidget(_lbl("Email", 11, color=C_TEXT_MUTED))
+        inp_em = QLineEdit(em)
+        inp_em.setPlaceholderText("correo@ejemplo.com")
+        inp_em.setStyleSheet(inp_fn.styleSheet())
+        dl.addWidget(inp_em)
+
+        dl.addWidget(_lbl("Avatar", 11, color=C_TEXT_MUTED))
+        avatars = ["🌱", "📚", "💬", "🎯", "⭐", "🏆", "🤟", "👋", "🧑‍💻", "🎓"]
+        combo = QComboBox()
+        combo.addItems(avatars)
+        combo.setStyleSheet(f"border:1px solid {C_BORDER};border-radius:8px;padding:6px;font-size:18px;background:white;")
+        dl.addWidget(combo)
+
+        btns = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        btns.button(QDialogButtonBox.Save).setText("Guardar")
+        btns.button(QDialogButtonBox.Cancel).setText("Cancelar")
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        dl.addWidget(btns)
+
+        if dlg.exec_() == QDialog.Accepted:
+            try:
+                import sqlite3
+                from config import get_database_path
+                conn = sqlite3.connect(get_database_path())
+                cur = conn.cursor()
+                cur.execute(
+                    "UPDATE users SET first_name=?, last_name=?, email=?, profile_picture_url=? WHERE id=?",
+                    (inp_fn.text().strip(), inp_ln.text().strip(),
+                     inp_em.text().strip(), combo.currentText(), self.user_id)
+                )
+                conn.commit()
+                conn.close()
+                QMessageBox.information(self, "Perfil actualizado", "¡Perfil actualizado correctamente!")
+                # Recargar página de perfil
+                self._page_perfil = self._build_scroll_page(self._build_perfil_content)
+                self.stack.insertWidget(0, self._page_perfil)
+                old = self.stack.widget(1)
+                self.stack.removeWidget(old)
+                old.deleteLater()
+                self._go(0, self.btn_perfil)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"No se pudo guardar:\n{e}")
+
     def _load_username(self):
         try:
             import sqlite3
@@ -752,6 +1148,17 @@ class SessionsWindow(QWidget):
                 self._username_label.setText((row[1] or row[0]).capitalize())
         except Exception:
             pass
+        # Mostrar onboarding si es la primera vez del usuario
+        if not self.is_admin_mode:
+            try:
+                from config import get_database_path
+                from onboarding_window import _should_show_onboarding, OnboardingWindow
+                if _should_show_onboarding(self.user_id, get_database_path()):
+                    dlg = OnboardingWindow(self.user_id, get_database_path(), self)
+                    dlg.exec_()
+            except Exception:
+                pass
+
         # Sincronizar logros con datos históricos reales (en background)
         try:
             import threading

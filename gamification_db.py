@@ -278,11 +278,17 @@ def _get_high_accuracy_sessions_today(user_id):
 
 
 def award_session_points(user_id, session_id, gestures_count=0, accuracy=0.0):
-    """Otorga puntos al cerrar una sesión y verifica logros nuevos."""
+    """Otorga puntos al cerrar una sesión y verifica logros nuevos.
+    Retorna (new_achievements, new_level_info) donde new_level_info es None o dict si subió de nivel."""
     if gestures_count <= 0:
-        return []
+        return [], None
 
     db = DatabaseManager()
+
+    # Nivel antes de otorgar puntos
+    prev_rows = db.execute_query("SELECT total_points FROM user_points WHERE user_id=?", (user_id,))
+    prev_pts = (prev_rows[0][0] or 0) if prev_rows else 0
+    prev_level = _get_level_info(prev_pts)[0]
 
     # Puntos base: 2 pts por gesto, bonus por precisión
     base = gestures_count * 2
@@ -320,7 +326,23 @@ def award_session_points(user_id, session_id, gestures_count=0, accuracy=0.0):
 
     # Verificar logros
     new_achievements = _check_gamification_achievements(user_id, gestures_count, accuracy)
-    return new_achievements
+
+    # Detectar subida de nivel
+    new_rows = db.execute_query("SELECT total_points FROM user_points WHERE user_id=?", (user_id,))
+    new_pts = (new_rows[0][0] or 0) if new_rows else 0
+    new_level_num, new_level_name, _ = _get_level_info(new_pts)
+    new_level_info = None
+    if new_level_num > prev_level:
+        user_row = db.execute_query("SELECT username FROM users WHERE id=?", (user_id,))
+        username = user_row[0][0] if user_row else "Usuario"
+        new_level_info = {
+            "level_num":  new_level_num,
+            "level_name": new_level_name,
+            "username":   username,
+            "total_points": new_pts,
+        }
+
+    return new_achievements, new_level_info
 
 
 def _update_daily_streak(user_id):
@@ -520,3 +542,78 @@ def get_evaluation_history(user_id, limit=20):
         "SELECT id, score_pct, correct, total, details, created_at FROM evaluation_results WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
         (user_id, limit)
     )
+
+
+def generate_level_certificate(level_info, output_path):
+    """Genera un certificado PDF al subir de nivel. level_info: dict con username, level_num, level_name, total_points."""
+    from datetime import datetime
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+    from reportlab.pdfgen import canvas as pdf_canvas
+
+    W, H = landscape(A4)
+    c = pdf_canvas.Canvas(output_path, pagesize=landscape(A4))
+
+    # Fondo degradado simulado con rectángulos
+    c.setFillColor(colors.HexColor("#0f0f1a"))
+    c.rect(0, 0, W, H, fill=1, stroke=0)
+
+    # Borde decorativo
+    c.setStrokeColor(colors.HexColor("#7c3aed"))
+    c.setLineWidth(4)
+    c.roundRect(1*cm, 1*cm, W - 2*cm, H - 2*cm, 16, fill=0, stroke=1)
+    c.setLineWidth(1)
+    c.setStrokeColor(colors.HexColor("#a78bfa"))
+    c.roundRect(1.3*cm, 1.3*cm, W - 2.6*cm, H - 2.6*cm, 12, fill=0, stroke=1)
+
+    LEVEL_EMOJIS = {1:"🌱", 2:"📚", 3:"💬", 4:"🎯", 5:"⭐", 6:"🏆"}
+    emoji = LEVEL_EMOJIS.get(level_info["level_num"], "🏅")
+
+    # Título
+    c.setFillColor(colors.HexColor("#a78bfa"))
+    c.setFont("Helvetica", 13)
+    c.drawCentredString(W/2, H - 3*cm, "SISTEMA INTÉRPRETE LSP")
+
+    c.setFillColor(colors.HexColor("#f8fafc"))
+    c.setFont("Helvetica-Bold", 36)
+    c.drawCentredString(W/2, H - 5.2*cm, "CERTIFICADO DE NIVEL")
+
+    # Línea decorativa
+    c.setStrokeColor(colors.HexColor("#7c3aed"))
+    c.setLineWidth(2)
+    c.line(W/2 - 6*cm, H - 5.8*cm, W/2 + 6*cm, H - 5.8*cm)
+
+    # Texto principal
+    c.setFillColor(colors.HexColor("#94a3b8"))
+    c.setFont("Helvetica", 14)
+    c.drawCentredString(W/2, H - 7*cm, "Se certifica que")
+
+    c.setFillColor(colors.HexColor("#7c3aed"))
+    c.setFont("Helvetica-Bold", 30)
+    c.drawCentredString(W/2, H - 8.5*cm, level_info["username"].upper())
+
+    c.setFillColor(colors.HexColor("#94a3b8"))
+    c.setFont("Helvetica", 14)
+    c.drawCentredString(W/2, H - 9.8*cm, "ha alcanzado el nivel")
+
+    # Nivel destacado
+    c.setFillColor(colors.HexColor("#f59e0b"))
+    c.setFont("Helvetica-Bold", 48)
+    c.drawCentredString(W/2, H - 12*cm, f"Nivel {level_info['level_num']} — {level_info['level_name']}")
+
+    c.setFillColor(colors.HexColor("#a78bfa"))
+    c.setFont("Helvetica", 16)
+    c.drawCentredString(W/2, H - 13.2*cm, f"con {level_info['total_points']} puntos acumulados")
+
+    # Fecha
+    c.setFillColor(colors.HexColor("#64748b"))
+    c.setFont("Helvetica", 11)
+    c.drawCentredString(W/2, H - 14.5*cm, f"Fecha: {datetime.now().strftime('%d de %B de %Y')}")
+
+    c.setFont("Helvetica", 10)
+    c.drawCentredString(W/2, 1.6*cm, "Intérprete LSP — Sistema de reconocimiento de lengua de señas peruana")
+
+    c.save()

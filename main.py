@@ -10,7 +10,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suprimir advertencias de TensorFlow
 os.environ['CUDA_VISIBLE_DEVICES'] = ''   # Forzar uso de CPU
 
 from keras.models import load_model
-from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QMessageBox, QCheckBox, QSlider
+from PyQt5.QtWidgets import QApplication, QMainWindow, QLabel, QTextEdit, QHBoxLayout, QVBoxLayout, QWidget, QPushButton, QMessageBox, QCheckBox, QSlider, QProgressBar
 from PyQt5.QtGui import QImage, QPixmap, QIcon
 from PyQt5.QtCore import QTimer, Qt
 from mediapipe.python.solutions.holistic import Holistic
@@ -240,9 +240,30 @@ class VideoRecorder(QMainWindow):
         self.hud_gestos.setStyleSheet("color:#a78bfa; font-weight:bold; font-size:12px; background:transparent;")
         hud_layout.addWidget(self.hud_gestos)
 
-        self.hud_precision = QLabel("🎯 —%")
-        self.hud_precision.setStyleSheet("color:#22c55e; font-weight:bold; font-size:12px; background:transparent;")
-        hud_layout.addWidget(self.hud_precision)
+        # Barra de confianza animada rojo→amarillo→verde
+        conf_col = QVBoxLayout()
+        conf_col.setSpacing(1)
+        conf_lbl = QLabel("🎯 Confianza")
+        conf_lbl.setStyleSheet("color:#94a3b8; font-size:10px; background:transparent;")
+        self.hud_conf_bar = QProgressBar()
+        self.hud_conf_bar.setMaximum(100)
+        self.hud_conf_bar.setValue(0)
+        self.hud_conf_bar.setFixedHeight(10)
+        self.hud_conf_bar.setFixedWidth(110)
+        self.hud_conf_bar.setTextVisible(False)
+        self.hud_conf_bar.setStyleSheet(
+            "QProgressBar{background:#2d2d44;border-radius:5px;}"
+            "QProgressBar::chunk{background:#ef4444;border-radius:5px;}"
+        )
+        self.hud_precision = QLabel("—%")
+        self.hud_precision.setStyleSheet("color:#22c55e; font-weight:bold; font-size:11px; background:transparent;")
+        conf_col.addWidget(conf_lbl)
+        bar_row = QHBoxLayout()
+        bar_row.setSpacing(4)
+        bar_row.addWidget(self.hud_conf_bar)
+        bar_row.addWidget(self.hud_precision)
+        conf_col.addLayout(bar_row)
+        hud_layout.addLayout(conf_col)
 
         self.hud_racha = QLabel("🔥 — días")
         self.hud_racha.setStyleSheet("color:#f59e0b; font-weight:bold; font-size:12px; background:transparent;")
@@ -546,7 +567,21 @@ class VideoRecorder(QMainWindow):
                                     self._hud_gestos_sesion = getattr(self, '_hud_gestos_sesion', 0) + 1
                                     pct_hud = int(self._session_avg_confidence * 100)
                                     self.hud_gestos.setText(f"✋ {self._hud_gestos_sesion} gestos")
-                                    self.hud_precision.setText(f"🎯 {pct_hud}%")
+                                    self.hud_precision.setText(f"{pct_hud}%")
+                                    self.hud_conf_bar.setValue(pct_hud)
+                                    if pct_hud >= 80:
+                                        bar_color = "#22c55e"
+                                    elif pct_hud >= 60:
+                                        bar_color = "#f59e0b"
+                                    else:
+                                        bar_color = "#ef4444"
+                                    self.hud_conf_bar.setStyleSheet(
+                                        f"QProgressBar{{background:#2d2d44;border-radius:5px;}}"
+                                        f"QProgressBar::chunk{{background:{bar_color};border-radius:5px;}}"
+                                    )
+                                    self.hud_precision.setStyleSheet(
+                                        f"color:{bar_color};font-weight:bold;font-size:11px;background:transparent;"
+                                    )
 
                     self.prediction_filter.reset()
 
@@ -661,9 +696,8 @@ class VideoRecorder(QMainWindow):
             if gestures > 0:
                 from gamification_db import award_session_points
                 try:
-                    new_ach = award_session_points(self.user_id, self.session_id, gestures, acc)
+                    new_ach, new_level = award_session_points(self.user_id, self.session_id, gestures, acc)
                     if new_ach:
-                        from PyQt5.QtWidgets import QMessageBox
                         msg = QMessageBox(self)
                         msg.setWindowTitle("🏆 ¡Logros desbloqueados!")
                         msg.setText(
@@ -675,6 +709,33 @@ class VideoRecorder(QMainWindow):
                         msg.setStandardButtons(QMessageBox.Ok)
                         msg.setStyleSheet("QLabel{min-width:320px;font-size:14px;}")
                         msg.exec_()
+                    if new_level:
+                        # Subida de nivel → ofrecer certificado
+                        from PyQt5.QtWidgets import QFileDialog
+                        msg2 = QMessageBox(self)
+                        msg2.setWindowTitle("⭐ ¡Subiste de nivel!")
+                        msg2.setText(
+                            f"<b>¡Felicitaciones, {new_level['username']}!</b><br><br>"
+                            f"Has alcanzado el <b>Nivel {new_level['level_num']} — {new_level['level_name']}</b><br>"
+                            f"con <b>{new_level['total_points']} puntos</b>.<br><br>"
+                            "¿Deseas descargar tu certificado de nivel?"
+                        )
+                        msg2.setIcon(QMessageBox.NoIcon)
+                        msg2.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+                        msg2.setStyleSheet("QLabel{min-width:340px;font-size:14px;}")
+                        if msg2.exec_() == QMessageBox.Yes:
+                            path, _ = QFileDialog.getSaveFileName(
+                                self, "Guardar certificado",
+                                f"certificado_nivel{new_level['level_num']}_{new_level['username']}.pdf",
+                                "PDF Files (*.pdf)"
+                            )
+                            if path:
+                                try:
+                                    from gamification_db import generate_level_certificate
+                                    generate_level_certificate(new_level, path)
+                                    QMessageBox.information(self, "Certificado guardado", f"Certificado guardado en:\n{path}")
+                                except Exception as ce:
+                                    QMessageBox.warning(self, "Error", f"No se pudo generar el certificado:\n{ce}")
                 except Exception as ex:
                     print(f"[Gamificación] Error al guardar puntos: {ex}")
         except Exception as e:

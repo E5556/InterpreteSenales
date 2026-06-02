@@ -150,10 +150,12 @@ class AdminPanel(QWidget):
 
         self.btn_stats     = SidebarButton("📊", "Estadísticas")
         self.btn_analytics = SidebarButton("🔍", "Analíticas globales")
+        self.btn_quality   = SidebarButton("🧪", "Calidad del modelo")
         self.btn_gestures  = SidebarButton("🤲", "Gestionar Gestos")
         self.btn_learning  = SidebarButton("🎓", "Modo Aprendizaje")
         layout.addWidget(self.btn_stats)
         layout.addWidget(self.btn_analytics)
+        layout.addWidget(self.btn_quality)
         layout.addWidget(self.btn_gestures)
         layout.addWidget(self.btn_learning)
 
@@ -188,6 +190,7 @@ class AdminPanel(QWidget):
         # Conexiones sidebar
         self.btn_stats.clicked.connect(self.handle_show_statistics)
         self.btn_analytics.clicked.connect(self.handle_show_analytics)
+        self.btn_quality.clicked.connect(self.handle_show_model_quality)
         self.btn_gestures.clicked.connect(self.handle_manage_gestures)
         self.btn_learning.clicked.connect(self.handle_learning_mode)
         self.btn_sessions.clicked.connect(self.handle_view_sessions)
@@ -238,13 +241,15 @@ class AdminPanel(QWidget):
         row.setContentsMargins(14, 10, 14, 10)
         row.setSpacing(8)
 
-        self.btn_add    = ActionButton("➕", "Agregar",  "#2563eb")
-        self.btn_edit   = ActionButton("✏️", "Editar",   "#0891b2")
-        self.btn_delete = ActionButton("🗑️", "Eliminar", "#dc2626")
+        self.btn_add     = ActionButton("➕", "Agregar",  "#2563eb")
+        self.btn_edit    = ActionButton("✏️", "Editar",   "#0891b2")
+        self.btn_delete  = ActionButton("🗑️", "Eliminar", "#dc2626")
+        self.btn_profile = ActionButton("👤", "Ver perfil", "#7c3aed")
 
         row.addWidget(self.btn_add)
         row.addWidget(self.btn_edit)
         row.addWidget(self.btn_delete)
+        row.addWidget(self.btn_profile)
 
         if self._is_expanded:
             self.btn_activate   = ActionButton("✅", "Activar",         "#16a34a")
@@ -269,6 +274,7 @@ class AdminPanel(QWidget):
         self.btn_add.clicked.connect(self.handle_add_user)
         self.btn_edit.clicked.connect(self.handle_edit_user)
         self.btn_delete.clicked.connect(self.handle_delete_user)
+        self.btn_profile.clicked.connect(self.handle_view_user_profile)
 
         return bar
 
@@ -475,6 +481,32 @@ class AdminPanel(QWidget):
             self._analytics_win.show()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo abrir analíticas:\n{e}")
+
+    def handle_show_model_quality(self):
+        try:
+            from model_quality_window import ModelQualityWindow
+            self._quality_win = ModelQualityWindow(self)
+            self._quality_win.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo abrir calidad del modelo:\n{e}")
+
+    def handle_view_user_profile(self):
+        row = self.user_table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "Seleccionar usuario", "Selecciona un usuario de la tabla primero.")
+            return
+        user_id_item = self.user_table.item(row, 0)
+        username_item = self.user_table.item(row, 1)
+        if not user_id_item:
+            return
+        user_id  = int(user_id_item.text())
+        username = username_item.text() if username_item else f"ID {user_id}"
+        try:
+            from user_profile_admin_window import UserProfileAdminWindow
+            self._user_profile_win = UserProfileAdminWindow(user_id, username, self)
+            self._user_profile_win.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo abrir el perfil:\n{e}")
 
     def logout(self):
         self.controller.logout()
