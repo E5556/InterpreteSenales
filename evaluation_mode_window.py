@@ -52,7 +52,7 @@ C_CARD     = "#1e1e2e"
 C_TEXT     = "#f8fafc"
 C_MUTED    = "#94a3b8"
 
-SECONDS_PER_WORD = 5   # tiempo para hacer cada seña
+SECONDS_PER_WORD = 8   # tiempo para hacer cada seña
 WORDS_PER_EXAM   = 5   # cantidad de señas por evaluación
 
 
@@ -95,6 +95,7 @@ class EvaluationModeWindow(QWidget):
         self._model = None
         self._word_ids = []
         self._running = False
+        self._evaluated = False
 
         # Estado interno — detector (igual que main.py)
         self._kp_seq      = []
@@ -299,6 +300,11 @@ class EvaluationModeWindow(QWidget):
                                     self._last_confidence = conf
                                     pct = int(conf * 100)
                                     self.detection_label.setText(f"✋ Detectado: {name.upper()} ({pct}%)")
+                                    # Detección exitosa → terminar countdown inmediatamente
+                                    if self._running and not self._evaluated:
+                                        self.countdown_timer.stop()
+                                        self._running = False
+                                        QTimer.singleShot(600, self._evaluate_word)
 
                     if not self._recording:
                         self._count_frame = 0
@@ -347,6 +353,7 @@ class EvaluationModeWindow(QWidget):
 
         self._last_prediction = None
         self._last_confidence = 0.0
+        self._evaluated = False
         # Resetear estado del detector
         self._kp_seq      = []
         self._count_frame = 0
@@ -381,9 +388,13 @@ class EvaluationModeWindow(QWidget):
         if self._countdown <= 0:
             self.countdown_timer.stop()
             self._running = False
-            self._evaluate_word()
+            if not self._evaluated:
+                self._evaluate_word()
 
     def _evaluate_word(self):
+        if self._evaluated:
+            return
+        self._evaluated = True
         word = self._words[self._current_idx]
         predicted = (self._last_prediction or "").upper()
         correct = (predicted == word)
