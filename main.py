@@ -487,10 +487,11 @@ class VideoRecorder(QMainWindow):
                                     self.last_gesture_name = gesture_name
                                     self.last_gesture_time = now
                                     print(f"GESTO RECONOCIDO: {sent} ({pct}%)")
-                                    # Guardar en BD
+                                    # Guardar en BD — solo gestos individuales del modelo actual
                                     try:
                                         from database import add_interpretation
-                                        add_interpretation(self.session_id, sent, confidence)
+                                        if gesture_name in self.word_ids:
+                                            add_interpretation(self.session_id, gesture_name.upper(), confidence)
                                     except Exception as _e:
                                         print(f"[BD] Error guardando interpretación: {_e}")
                                     # Acumular confidence para gamificación
