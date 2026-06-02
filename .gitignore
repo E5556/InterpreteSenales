@@ -6,3 +6,12 @@ tmp
 venv310
 .old
 venv
+
+# Datos de entrenamiento — almacenados en Google Drive
+frame_actions/
+data/keypoints/
+data/sequences/
+
+# Modelo entrenado — regenerable desde Colab
+data/*.keras
+data/*.h5
