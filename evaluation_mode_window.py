@@ -10,9 +10,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QProgressBar, QFrame, QApplication, QMessageBox
+    QProgressBar, QFrame, QApplication, QScrollArea
 )
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
 from PyQt5.QtGui import QFont, QImage, QPixmap, QIcon
 
 C_BG       = "#0f0f1a"
@@ -422,36 +422,152 @@ class EvaluationModeWindow(QWidget):
         total = len(self._results)
         score_pct = int(correct_count / total * 100) if total > 0 else 0
 
-        # Pantalla de resultado final
-        self.word_display.setText(f"{correct_count}/{total}")
-        self.word_display.setStyleSheet(
-            f"color:{C_SUCCESS if score_pct >= 60 else C_DANGER}; background:transparent; "
-            f"font-size:42px; font-weight:bold;"
-        )
-        self.word_sub.setText(f"Puntuación: {score_pct}%  —  {'¡Excelente!' if score_pct>=80 else 'Sigue practicando'}")
-        self.progress_lbl.setText("")
-        self.result_lbl.setText("")
-        self.countdown_lbl.setText("")
-        self.countdown_bar.setValue(0)
+        self._show_results_screen(correct_count, total, score_pct)
 
-        # Detalle por seña
-        detail = "\n".join(
-            f"{'✅' if ok else '❌'}  {w}  →  {pred or 'No detectado'}  ({int(c*100)}%)"
-            for w, pred, ok, c in self._results
-        )
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Resultado de la Evaluación")
-        msg.setText(
-            f"<b>{correct_count} de {total} correctas — {score_pct}%</b><br><br>"
-            + detail.replace("\n", "<br>")
-        )
-        msg.setStandardButtons(QMessageBox.Ok)
-        msg.setStyleSheet("QLabel{min-width:360px; font-size:13px;}")
-        msg.exec_()
+    def _show_results_screen(self, correct, total, pct):
+        # Rango de puntaje → tema visual
+        if pct == 100:
+            rank, rank_color, rank_emoji, bg_accent = "PERFECTO", "#f59e0b", "🏆", "#2d1f00"
+        elif pct >= 80:
+            rank, rank_color, rank_emoji, bg_accent = "EXCELENTE", C_SUCCESS,  "🥇", "#0d2d18"
+        elif pct >= 60:
+            rank, rank_color, rank_emoji, bg_accent = "BIEN",      "#3b82f6",  "🥈", "#0d1a2d"
+        elif pct >= 40:
+            rank, rank_color, rank_emoji, bg_accent = "REGULAR",   "#f59e0b",  "🥉", "#2d200d"
+        else:
+            rank, rank_color, rank_emoji, bg_accent = "PRACTICA MÁS", C_DANGER, "💪", "#2d0d0d"
 
-        self.btn_start.setEnabled(True)
-        self.word_display.setText("¿Repetir?")
-        self.word_sub.setText("Pulsa 'Iniciar' para una nueva evaluación")
+        # Overlay de resultados que cubre el panel derecho
+        overlay = QWidget(self)
+        overlay.setStyleSheet(f"background:{C_BG};")
+        overlay.setGeometry(self.width() // 2, 0, self.width() // 2, self.height())
+        overlay.show()
+        self._result_overlay = overlay  # mantener referencia
+
+        lay = QVBoxLayout(overlay)
+        lay.setContentsMargins(30, 30, 30, 30)
+        lay.setSpacing(16)
+
+        # Encabezado con emoji y rango
+        header = QFrame()
+        header.setStyleSheet(f"QFrame{{background:{bg_accent};border-radius:16px;}}")
+        hl = QVBoxLayout(header)
+        hl.setContentsMargins(20, 20, 20, 20)
+        hl.setSpacing(8)
+        emoji_lbl = QLabel(rank_emoji)
+        emoji_lbl.setAlignment(Qt.AlignCenter)
+        emoji_lbl.setFont(QFont("Segoe UI", 48))
+        emoji_lbl.setStyleSheet("background:transparent;")
+        hl.addWidget(emoji_lbl)
+        rank_lbl = QLabel(rank)
+        rank_lbl.setAlignment(Qt.AlignCenter)
+        rank_lbl.setFont(QFont("Segoe UI", 24, QFont.Bold))
+        rank_lbl.setStyleSheet(f"color:{rank_color}; background:transparent;")
+        hl.addWidget(rank_lbl)
+        score_lbl = QLabel(f"{correct} de {total} correctas")
+        score_lbl.setAlignment(Qt.AlignCenter)
+        score_lbl.setFont(QFont("Segoe UI", 14))
+        score_lbl.setStyleSheet(f"color:{C_TEXT}; background:transparent;")
+        hl.addWidget(score_lbl)
+        lay.addWidget(header)
+
+        # Barra de puntaje
+        pct_bar = QProgressBar()
+        pct_bar.setMaximum(100)
+        pct_bar.setValue(pct)
+        pct_bar.setFixedHeight(18)
+        pct_bar.setTextVisible(True)
+        pct_bar.setFormat(f"  {pct}%")
+        pct_bar.setStyleSheet(
+            f"QProgressBar{{background:#2d2d44;border-radius:9px;color:white;font-weight:bold;font-size:12px;}}"
+            f"QProgressBar::chunk{{background:{rank_color};border-radius:9px;}}"
+        )
+        lay.addWidget(pct_bar)
+
+        # Detalle por seña (scroll si hay muchas)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("background:transparent;")
+        detail_widget = QWidget()
+        detail_widget.setStyleSheet("background:transparent;")
+        dl = QVBoxLayout(detail_widget)
+        dl.setSpacing(6)
+        dl.setContentsMargins(0, 0, 0, 0)
+
+        for word, pred, ok, conf in self._results:
+            row = QFrame()
+            row_color = "#0d2d18" if ok else "#2d0d0d"
+            row.setStyleSheet(f"QFrame{{background:{row_color};border-radius:10px;}}")
+            rl = QHBoxLayout(row)
+            rl.setContentsMargins(14, 10, 14, 10)
+
+            icon = QLabel("✅" if ok else "❌")
+            icon.setFont(QFont("Segoe UI", 16))
+            icon.setStyleSheet("background:transparent;")
+            rl.addWidget(icon)
+
+            word_lbl = QLabel(word)
+            word_lbl.setFont(QFont("Segoe UI", 13, QFont.Bold))
+            word_lbl.setStyleSheet(f"color:{C_TEXT}; background:transparent;")
+            rl.addWidget(word_lbl)
+
+            arrow = QLabel("→")
+            arrow.setStyleSheet(f"color:{C_MUTED}; background:transparent;")
+            rl.addWidget(arrow)
+
+            pred_text = pred if pred else "No detectado"
+            pred_lbl = QLabel(pred_text)
+            pred_color = C_SUCCESS if ok else C_DANGER
+            pred_lbl.setFont(QFont("Segoe UI", 13))
+            pred_lbl.setStyleSheet(f"color:{pred_color}; background:transparent;")
+            rl.addWidget(pred_lbl)
+
+            rl.addStretch()
+            conf_lbl = QLabel(f"{int(conf*100)}%")
+            conf_lbl.setFont(QFont("Segoe UI", 12))
+            conf_lbl.setStyleSheet(f"color:{C_MUTED}; background:transparent;")
+            rl.addWidget(conf_lbl)
+
+            dl.addWidget(row)
+
+        scroll.setWidget(detail_widget)
+        lay.addWidget(scroll)
+
+        # Botones
+        btn_row = QHBoxLayout()
+        btn_retry = QPushButton("🔄  Intentar de nuevo")
+        btn_retry.setFixedHeight(44)
+        btn_retry.setCursor(Qt.PointingHandCursor)
+        btn_retry.setFont(QFont("Segoe UI", 12, QFont.Bold))
+        btn_retry.setStyleSheet(
+            f"QPushButton{{background:{C_ACCENT};color:white;border-radius:10px;border:none;}}"
+            f"QPushButton:hover{{background:#6d28d9;}}"
+        )
+        def _retry():
+            overlay.hide()
+            overlay.deleteLater()
+            self.btn_start.setEnabled(True)
+            self.word_display.setText("¡Listo!")
+            self.word_sub.setText(f"Gestos disponibles: {', '.join(g.upper() for g in self._word_ids)}")
+            self.progress_lbl.setText("")
+            self.result_lbl.setText("")
+            self.countdown_lbl.setText(f"{SECONDS_PER_WORD}s")
+            self.countdown_bar.setValue(SECONDS_PER_WORD * 10)
+        btn_retry.clicked.connect(_retry)
+        btn_row.addWidget(btn_retry)
+
+        btn_close = QPushButton("← Volver al menú")
+        btn_close.setFixedHeight(44)
+        btn_close.setCursor(Qt.PointingHandCursor)
+        btn_close.setFont(QFont("Segoe UI", 12))
+        btn_close.setStyleSheet(
+            f"QPushButton{{background:transparent;color:{C_MUTED};border:1px solid #2d2d44;border-radius:10px;}}"
+            f"QPushButton:hover{{color:{C_TEXT};border-color:{C_MUTED};}}"
+        )
+        btn_close.clicked.connect(self.close)
+        btn_row.addWidget(btn_close)
+        lay.addLayout(btn_row)
 
     # ── CIERRE ───────────────────────────────────────────────────
     def closeEvent(self, event):
