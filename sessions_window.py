@@ -7,6 +7,15 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QPixmap, QIcon, QColor
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+    _MATPLOTLIB_OK = True
+except Exception:
+    _MATPLOTLIB_OK = False
 from database import get_user_sessions
 
 C_SIDEBAR_BG   = "#1e1e2e"
@@ -98,10 +107,14 @@ class SessionsWindow(QWidget):
         self.btn_logros    = SidebarBtn("🏆", "Mis Logros")
         self.btn_retos     = SidebarBtn("🎯", "Retos del día")
         self.btn_historial = SidebarBtn("📜", "Historial de puntos")
+        self.btn_gestos    = SidebarBtn("📊", "Mis Gestos")
+        self.btn_ranking   = SidebarBtn("🏅", "Ranking")
+        self.btn_eval      = SidebarBtn("📝", "Modo Evaluación")
 
         self._nav_btns = [
             self.btn_perfil, self.btn_sessions, self.btn_new, self.btn_learning,
-            self.btn_logros, self.btn_retos, self.btn_historial
+            self.btn_logros, self.btn_retos, self.btn_historial,
+            self.btn_gestos, self.btn_ranking, self.btn_eval,
         ]
         for btn in self._nav_btns:
             sb.addWidget(btn)
@@ -140,12 +153,16 @@ class SessionsWindow(QWidget):
         self._page_logros    = self._build_scroll_page(self._build_logros_content)
         self._page_retos     = self._build_scroll_page(self._build_retos_content)
         self._page_historial = self._build_scroll_page(self._build_historial_content)
+        self._page_gestos    = self._build_scroll_page(self._build_gestos_content)
+        self._page_ranking   = self._build_scroll_page(self._build_ranking_content)
 
         self.stack.addWidget(self._page_perfil)     # 0
         self.stack.addWidget(self._page_sessions)   # 1
         self.stack.addWidget(self._page_logros)     # 2
         self.stack.addWidget(self._page_retos)      # 3
         self.stack.addWidget(self._page_historial)  # 4
+        self.stack.addWidget(self._page_gestos)     # 5
+        self.stack.addWidget(self._page_ranking)    # 6
 
         # Conexiones sidebar
         self.btn_perfil.clicked.connect(lambda: self._go(0, self.btn_perfil))
@@ -155,6 +172,9 @@ class SessionsWindow(QWidget):
         self.btn_logros.clicked.connect(lambda: self._go(2, self.btn_logros))
         self.btn_retos.clicked.connect(lambda: self._go(3, self.btn_retos))
         self.btn_historial.clicked.connect(lambda: self._go(4, self.btn_historial))
+        self.btn_gestos.clicked.connect(lambda: self._go(5, self.btn_gestos))
+        self.btn_ranking.clicked.connect(lambda: self._go(6, self.btn_ranking))
+        self.btn_eval.clicked.connect(self.open_evaluation_mode)
         self.btn_logout.clicked.connect(self.logout)
 
         self._go(0, self.btn_perfil)  # Inicia en Mi Perfil
@@ -282,6 +302,58 @@ class SessionsWindow(QWidget):
         lc.addLayout(grid)
         lay.addWidget(lvl_card)
 
+        # Gráfica de progreso histórico
+        if _MATPLOTLIB_OK:
+            try:
+                import sqlite3
+                from config import get_database_path
+                from datetime import datetime
+                conn = sqlite3.connect(get_database_path())
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT DATE(i.timestamp) as dia, COUNT(*) as total
+                    FROM interpretations i
+                    JOIN sessions s ON i.session_id = s.id
+                    WHERE s.user_id = ?
+                    GROUP BY dia ORDER BY dia ASC
+                    LIMIT 30
+                """, (self.user_id,))
+                data = cur.fetchall()
+                conn.close()
+
+                if data and len(data) >= 1:
+                    dias = [datetime.strptime(r[0], "%Y-%m-%d") for r in data]
+                    totales = [r[1] for r in data]
+
+                    fig, ax = plt.subplots(figsize=(6.5, 2.5))
+                    fig.patch.set_facecolor("#ffffff")
+                    ax.set_facecolor("#f8fafc")
+                    ax.plot(dias, totales, color="#7c3aed", linewidth=2.2, marker="o",
+                            markersize=5, markerfacecolor="#a78bfa")
+                    ax.fill_between(dias, totales, alpha=0.12, color="#7c3aed")
+                    ax.set_ylabel("Gestos", fontsize=9, color="#64748b")
+                    ax.tick_params(labelsize=8, colors="#64748b")
+                    ax.xaxis.set_major_formatter(mdates.DateFormatter("%d/%m"))
+                    ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+                    fig.autofmt_xdate(rotation=30)
+                    for spine in ax.spines.values():
+                        spine.set_edgecolor("#e2e8f0")
+                    ax.grid(axis="y", linestyle="--", alpha=0.4, color="#e2e8f0")
+                    fig.tight_layout(pad=1.2)
+
+                    chart_card = QFrame()
+                    chart_card.setStyleSheet(f"QFrame{{background:{C_CARD_BG};border-radius:14px;border:1px solid {C_BORDER};}}")
+                    cc = QVBoxLayout(chart_card)
+                    cc.setContentsMargins(18, 14, 18, 14)
+                    cc.addWidget(_lbl("📈 Progreso histórico (últimos 30 días)", 14, bold=True))
+                    canvas = FigureCanvas(fig)
+                    canvas.setFixedHeight(220)
+                    cc.addWidget(canvas)
+                    lay.addWidget(chart_card)
+                    plt.close(fig)
+            except Exception:
+                pass
+
     def _build_logros_content(self, lay):
         from gamification_db import get_all_achievements, get_user_achievements, seed_default_achievements
         seed_default_achievements()
@@ -317,21 +389,22 @@ class SessionsWindow(QWidget):
 
     # ── PÁGINA: RETOS DEL DÍA ────────────────────────────────
     def _build_retos_content(self, lay):
-        from gamification_db import get_daily_challenges
+        from gamification_db import get_daily_challenges, get_weekly_challenge
         from datetime import date
         challenges = get_daily_challenges(self.user_id)
+        weekly = get_weekly_challenge(self.user_id)
 
         lay.addWidget(_lbl("Retos del Día", 20, bold=True))
         lay.addWidget(_lbl(date.today().strftime("%A %d de %B, %Y"), 12, color=C_TEXT_MUTED))
 
-        for ch in challenges:
+        def _challenge_card(ch, icon="🎯", accent_color=C_ACCENT):
             card = QFrame()
             card.setStyleSheet(f"QFrame{{background:{C_CARD_BG};border-radius:12px;border:1px solid {C_BORDER};}}")
             card.setMinimumHeight(90)
             cl = QVBoxLayout(card)
             cl.setContentsMargins(20, 14, 20, 14)
             row = QHBoxLayout()
-            row.addWidget(_lbl("🎯", 28))
+            row.addWidget(_lbl(icon, 28))
             info = QVBoxLayout()
             info.addWidget(_lbl(ch["title"], 14, bold=True))
             done = ch["current"] >= ch["target"]
@@ -342,16 +415,25 @@ class SessionsWindow(QWidget):
             row.addLayout(info)
             row.addStretch()
             bar = QProgressBar()
-            bar.setMaximum(ch["target"])
+            bar.setMaximum(max(ch["target"], 1))
             bar.setValue(min(ch["current"], ch["target"]))
             bar.setFixedWidth(140); bar.setFixedHeight(10); bar.setTextVisible(False)
             bar.setStyleSheet(
                 f"QProgressBar{{background:{C_BORDER};border-radius:5px;}}"
-                f"QProgressBar::chunk{{background:{'#22c55e' if done else C_ACCENT};border-radius:5px;}}"
+                f"QProgressBar::chunk{{background:{'#22c55e' if done else accent_color};border-radius:5px;}}"
             )
             row.addWidget(bar)
             cl.addLayout(row)
-            lay.addWidget(card)
+            return card
+
+        for ch in challenges:
+            lay.addWidget(_challenge_card(ch))
+
+        # Reto semanal
+        lay.addSpacing(10)
+        lay.addWidget(_lbl("🗓️  Reto de la Semana", 16, bold=True))
+        lay.addWidget(_lbl("Se renueva cada lunes", 11, color=C_TEXT_MUTED))
+        lay.addWidget(_challenge_card(weekly, icon="🗓️", accent_color="#f59e0b"))
 
     # ── PÁGINA: HISTORIAL ────────────────────────────────────
     def _build_historial_content(self, lay):
@@ -382,6 +464,151 @@ class SessionsWindow(QWidget):
             table.setItem(i, 3, QTableWidgetItem(desc or ""))
         lay.addWidget(table)
 
+    # ── PÁGINA: MIS GESTOS ───────────────────────────────────
+    def _build_gestos_content(self, lay):
+        import sqlite3
+        from config import get_database_path
+
+        lay.addWidget(_lbl("Mis Gestos", 20, bold=True))
+        lay.addWidget(_lbl("Precisión promedio y frecuencia de cada seña reconocida", 12, color=C_TEXT_MUTED))
+
+        try:
+            conn = sqlite3.connect(get_database_path())
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT word_detected,
+                       COUNT(*) as total,
+                       AVG(confidence_score)*100 as precision_prom,
+                       MAX(confidence_score)*100 as mejor,
+                       MIN(confidence_score)*100 as peor
+                FROM interpretations i
+                JOIN sessions s ON i.session_id = s.id
+                WHERE s.user_id = ? AND confidence_score IS NOT NULL
+                GROUP BY word_detected
+                ORDER BY precision_prom DESC
+            """, (self.user_id,))
+            rows = cur.fetchall()
+            conn.close()
+        except Exception:
+            rows = []
+
+        if not rows:
+            lay.addWidget(_lbl("Aún no tienes interpretaciones registradas.\nInicia una sesión para ver tu progreso aquí.", 13, color=C_TEXT_MUTED, wrap=True))
+            return
+
+        GESTURE_COLORS = {"HOLA": "#7c3aed", "ADIOS": "#3b82f6", "ADULTO": "#f59e0b",
+                          "ANCIANO": "#22c55e", "GATO": "#ef4444"}
+
+        for word, total, prom, mejor, peor in rows:
+            prom = prom or 0.0
+            mejor = mejor or 0.0
+            peor = peor or 0.0
+            color = GESTURE_COLORS.get(word, C_ACCENT)
+
+            card = QFrame()
+            card.setStyleSheet(f"QFrame{{background:{C_CARD_BG};border-radius:14px;border:1px solid {C_BORDER};}}")
+            cl = QVBoxLayout(card)
+            cl.setContentsMargins(22, 16, 22, 16)
+            cl.setSpacing(8)
+
+            header = QHBoxLayout()
+            header.addWidget(_lbl(word, 16, bold=True, color=color))
+            header.addStretch()
+            header.addWidget(_lbl(f"{int(total)} veces", 12, color=C_TEXT_MUTED))
+            cl.addLayout(header)
+
+            bar_row = QHBoxLayout()
+            bar = QProgressBar()
+            bar.setMaximum(100)
+            bar.setValue(int(prom))
+            bar.setFixedHeight(14)
+            bar.setTextVisible(False)
+            bar.setStyleSheet(
+                f"QProgressBar{{background:{C_BORDER};border-radius:7px;}}"
+                f"QProgressBar::chunk{{background:{color};border-radius:7px;}}"
+            )
+            bar_row.addWidget(bar)
+            bar_row.addWidget(_lbl(f"  {prom:.1f}%", 13, bold=True, color=color))
+            cl.addLayout(bar_row)
+
+            stats_row = QHBoxLayout()
+            stats_row.addWidget(_lbl(f"Mejor: {mejor:.1f}%", 11, color=C_SUCCESS))
+            stats_row.addWidget(_lbl(f"  Peor: {peor:.1f}%", 11, color=C_DANGER))
+            stats_row.addStretch()
+            cl.addLayout(stats_row)
+
+            lay.addWidget(card)
+
+    # ── PÁGINA: RANKING ──────────────────────────────────────
+    def _build_ranking_content(self, lay):
+        import sqlite3
+        from config import get_database_path
+
+        lay.addWidget(_lbl("🏅 Ranking de Usuarios", 20, bold=True))
+        lay.addWidget(_lbl("Clasificación general por puntos acumulados", 12, color=C_TEXT_MUTED))
+
+        try:
+            conn = sqlite3.connect(get_database_path())
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT u.username, up.total_points, up.current_level, up.daily_streak,
+                       COUNT(i.id) as total_gestos
+                FROM users u
+                JOIN user_points up ON u.id = up.user_id
+                LEFT JOIN sessions s ON u.id = s.user_id
+                LEFT JOIN interpretations i ON s.id = i.session_id
+                WHERE u.is_active = 1 AND u.role = 'user'
+                GROUP BY u.id
+                ORDER BY up.total_points DESC
+            """)
+            rows = cur.fetchall()
+            # También incluir el usuario actual aunque sea admin
+            cur.execute("""
+                SELECT username FROM users WHERE id=?
+            """, (self.user_id,))
+            me_row = cur.fetchone()
+            me_username = me_row[0] if me_row else ""
+            conn.close()
+        except Exception:
+            rows = []
+            me_username = ""
+
+        if not rows:
+            lay.addWidget(_lbl("Aún no hay datos de ranking disponibles.", 13, color=C_TEXT_MUTED))
+            return
+
+        MEDALS = {1: "🥇", 2: "🥈", 3: "🥉"}
+        LEVEL_NAMES = {1: "Principiante", 2: "Aprendiz", 3: "Comunicador",
+                       4: "Intérprete", 5: "Experto", 6: "Maestro"}
+
+        for pos, (username, pts, level, streak, gestos) in enumerate(rows, start=1):
+            medal = MEDALS.get(pos, f"#{pos}")
+            is_me = (username == me_username)
+
+            card = QFrame()
+            border = f"2px solid {C_ACCENT}" if is_me else f"1px solid {C_BORDER}"
+            bg = "#f5f3ff" if is_me else C_CARD_BG
+            card.setStyleSheet(f"QFrame{{background:{bg};border-radius:12px;border:{border};}}")
+            cl = QHBoxLayout(card)
+            cl.setContentsMargins(18, 12, 18, 12)
+            cl.setSpacing(16)
+
+            cl.addWidget(_lbl(medal, 22))
+            info = QVBoxLayout()
+            name_text = f"{username}  {'(Tú)' if is_me else ''}"
+            info.addWidget(_lbl(name_text, 14, bold=True, color=C_ACCENT if is_me else C_TEXT_DARK))
+            info.addWidget(_lbl(f"Nivel {level} — {LEVEL_NAMES.get(level, '')}  •  🔥 {streak} días", 11, color=C_TEXT_MUTED))
+            cl.addLayout(info)
+            cl.addStretch()
+
+            stats = QVBoxLayout()
+            stats.setAlignment(Qt.AlignRight)
+            stats.addWidget(_lbl(f"{pts} pts", 16, bold=True, color=C_ACCENT))
+            stats.addWidget(_lbl(f"{gestos} gestos", 11, color=C_TEXT_MUTED))
+            cl.addLayout(stats)
+
+            lay.addWidget(card)
+
     # ── ACCIONES ─────────────────────────────────────────────
     def populate_sessions(self):
         self.sessions_list.clear()
@@ -406,6 +633,16 @@ class SessionsWindow(QWidget):
         if session_id:
             self.controller.show_history_window(session_id)
             self.close()
+
+    def open_evaluation_mode(self):
+        self.btn_eval.setChecked(True)
+        try:
+            from evaluation_mode_window import EvaluationModeWindow
+            self._eval_window = EvaluationModeWindow(self.user_id, self.controller)
+            self._eval_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo abrir el modo evaluación:\n{str(e)}")
+        self.btn_eval.setChecked(False)
 
     def open_learning_mode(self):
         self.btn_learning.setChecked(True)

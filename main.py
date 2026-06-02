@@ -605,20 +605,29 @@ class VideoRecorder(QMainWindow):
         except Exception as e:
             print(f"Error al cerrar recursos: {e}")
 
-        # Registrar puntos de la sesión en background
+        # Registrar puntos de la sesión y mostrar logros nuevos
         try:
             gestures = len(self.sentence) if hasattr(self, 'sentence') else 0
             acc = getattr(self, '_session_avg_confidence', 0.0)
             if gestures > 0:
                 from gamification_db import award_session_points
-                def _award():
-                    try:
-                        new_ach = award_session_points(self.user_id, self.session_id, gestures, acc)
-                        if new_ach:
-                            print(f"[Gamificación] Logros desbloqueados: {new_ach}")
-                    except Exception as ex:
-                        print(f"[Gamificación] Error al guardar puntos: {ex}")
-                threading.Thread(target=_award, daemon=True).start()
+                try:
+                    new_ach = award_session_points(self.user_id, self.session_id, gestures, acc)
+                    if new_ach:
+                        from PyQt5.QtWidgets import QMessageBox
+                        msg = QMessageBox(self)
+                        msg.setWindowTitle("🏆 ¡Logros desbloqueados!")
+                        msg.setText(
+                            "<b>¡Felicitaciones!</b><br><br>"
+                            + "".join(f"🏅 {a}<br>" for a in new_ach)
+                            + "<br>Estos logros ya aparecen en <b>Mis Logros</b>."
+                        )
+                        msg.setIcon(QMessageBox.NoIcon)
+                        msg.setStandardButtons(QMessageBox.Ok)
+                        msg.setStyleSheet("QLabel{min-width:320px;font-size:14px;}")
+                        msg.exec_()
+                except Exception as ex:
+                    print(f"[Gamificación] Error al guardar puntos: {ex}")
         except Exception as e:
             print(f"[Gamificación] Error preparando puntos: {e}")
 

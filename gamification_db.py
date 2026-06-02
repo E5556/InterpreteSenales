@@ -14,14 +14,23 @@ LEVELS = [
 # (name, description, points, rarity, type_id, requirements)
 # type_ids: 1=Aprendizaje, 2=Constancia, 3=Precisión, 5=Explorador, 6=Maestría, 7=Velocidad
 DEFAULT_ACHIEVEMENTS = [
-    ("Primera Señal",   "Reconoce tu primer gesto",                       10,  "common", 1, {"gestures_total": 1}),
-    ("Comunicador",     "Alcanza 50 gestos reconocidos en total",          50,  "common", 1, {"gestures_total": 50}),
-    ("Velocista",       "Reconoce 10 gestos en una sola sesión",          25,  "common", 7, {"gestures_session": 10}),
-    ("Racha de 3 días", "Usa la app 3 días consecutivos",                 30,  "common", 2, {"daily_streak": 3}),
-    ("Preciso",         "Completa una sesión con precisión mayor al 90%", 40,  "rare",   3, {"accuracy_rate": 90}),
-    ("Semana perfecta", "Usa la app 7 días consecutivos",                100,  "rare",   2, {"daily_streak": 7}),
-    ("Gran Explorador", "Alcanza 200 gestos reconocidos en total",        75,  "rare",   5, {"gestures_total": 200}),
-    ("Maestro de señas","Alcanza 500 gestos reconocidos en total",       200,  "epic",   6, {"gestures_total": 500}),
+    ("Primera Señal",   "Reconoce tu primer gesto",                       10,  "common",     1, {"gestures_total": 1}),
+    ("Comunicador",     "Alcanza 50 gestos reconocidos en total",          50,  "common",     1, {"gestures_total": 50}),
+    ("Velocista",       "Reconoce 10 gestos en una sola sesión",          25,  "common",     7, {"gestures_session": 10}),
+    ("Racha de 3 días", "Usa la app 3 días consecutivos",                 30,  "common",     2, {"daily_streak": 3}),
+    ("Preciso",         "Completa una sesión con precisión mayor al 90%", 40,  "rare",       3, {"accuracy_rate": 90}),
+    ("Semana perfecta", "Usa la app 7 días consecutivos",                100,  "rare",       2, {"daily_streak": 7}),
+    ("Gran Explorador", "Alcanza 200 gestos reconocidos en total",        75,  "rare",       5, {"gestures_total": 200}),
+    ("Maestro de señas","Alcanza 500 gestos reconocidos en total",       200,  "epic",       6, {"gestures_total": 500}),
+    # Logros por gesto específico
+    ("Experto en HOLA",    "Reconoce HOLA 30 veces con precisión >85%",  35,  "uncommon",   3, {"gesture_mastery": {"word": "HOLA",    "count": 30, "min_confidence": 0.85}}),
+    ("Experto en ADIOS",   "Reconoce ADIOS 30 veces con precisión >85%", 35,  "uncommon",   3, {"gesture_mastery": {"word": "ADIOS",   "count": 30, "min_confidence": 0.85}}),
+    ("Experto en ADULTO",  "Reconoce ADULTO 20 veces",                   30,  "uncommon",   1, {"gesture_mastery": {"word": "ADULTO",  "count": 20, "min_confidence": 0.0}}),
+    ("Experto en ANCIANO", "Reconoce ANCIANO 20 veces",                  30,  "uncommon",   1, {"gesture_mastery": {"word": "ANCIANO", "count": 20, "min_confidence": 0.0}}),
+    ("Políglota",          "Practica todos los gestos disponibles 5 veces cada uno", 80, "rare", 5, {"all_gestures_min": 5}),
+    ("Perfeccionista",     "Logra una sesión con precisión promedio >95%", 60, "epic",       3, {"accuracy_rate": 95}),
+    ("Racha de fuego",     "Usa la app 14 días consecutivos",            150,  "epic",       2, {"daily_streak": 14}),
+    ("Velocista extremo",  "Reconoce 25 gestos en una sola sesión",       50,  "rare",       7, {"gestures_session": 25}),
 ]
 
 DAILY_CHALLENGE_POOL = [
@@ -160,6 +169,73 @@ def get_daily_challenges(user_id):
     return challenges
 
 
+def get_weekly_challenge(user_id):
+    """Reto semanal rotativo basado en el número de semana ISO."""
+    today = date.today()
+    week_num = today.isocalendar()[1]
+    year = today.year
+    seed = year * 100 + week_num
+
+    import random
+    rng = random.Random(seed)
+    challenge_type = rng.randint(0, 2)
+
+    db = DatabaseManager()
+    # Gestos esta semana
+    rows = db.execute_query(
+        """SELECT COUNT(*) FROM interpretations i
+           JOIN sessions s ON i.session_id = s.id
+           WHERE s.user_id=? AND strftime('%W', i.timestamp)=strftime('%W','now')
+             AND strftime('%Y', i.timestamp)=strftime('%Y','now')""",
+        (user_id,)
+    )
+    gestures_week = rows[0][0] if rows else 0
+
+    # Sesiones esta semana
+    rows2 = db.execute_query(
+        """SELECT COUNT(DISTINCT s.id) FROM sessions s
+           JOIN interpretations i ON i.session_id = s.id
+           WHERE s.user_id=? AND strftime('%W', s.start_time)=strftime('%W','now')
+             AND strftime('%Y', s.start_time)=strftime('%Y','now')""",
+        (user_id,)
+    )
+    sessions_week = rows2[0][0] if rows2 else 0
+
+    # Sesiones con precisión >=80% esta semana
+    rows3 = db.execute_query(
+        """SELECT COUNT(*) FROM (
+               SELECT s.id FROM sessions s
+               JOIN interpretations i ON i.session_id = s.id
+               WHERE s.user_id=? AND strftime('%W', s.start_time)=strftime('%W','now')
+                 AND strftime('%Y', s.start_time)=strftime('%Y','now')
+                 AND i.confidence_score IS NOT NULL
+               GROUP BY s.id HAVING AVG(i.confidence_score) >= 0.80
+           )""",
+        (user_id,)
+    )
+    precise_week = rows3[0][0] if rows3 else 0
+
+    challenges = [
+        {"title": f"Acumula {rng.randint(80,150)} gestos esta semana",
+         "target": rng.randint(80, 150), "current": gestures_week, "type": "gestures_week"},
+        {"title": f"Completa {rng.randint(4,8)} sesiones esta semana",
+         "target": rng.randint(4, 8), "current": sessions_week, "type": "sessions_week"},
+        {"title": "Logra 3 sesiones con precisión >80% esta semana",
+         "target": 3, "current": precise_week, "type": "accuracy_week"},
+    ]
+    # Usar seed fija para que los targets no cambien al recalcular
+    rng2 = random.Random(seed + 99)
+    ch = challenges[challenge_type]
+    if ch["type"] == "gestures_week":
+        ch["target"] = rng2.randint(80, 150)
+        ch["title"] = f"Acumula {ch['target']} gestos esta semana"
+    elif ch["type"] == "sessions_week":
+        ch["target"] = rng2.randint(4, 8)
+        ch["title"] = f"Completa {ch['target']} sesiones esta semana"
+
+    return ch
+
+
 def _get_gestures_today(user_id):
     db = DatabaseManager()
     rows = db.execute_query(
@@ -215,10 +291,20 @@ def award_session_points(user_id, session_id, gestures_count=0, accuracy=0.0):
         bonus = 10
     elif accuracy >= 0.75:
         bonus = 5
-    total = base + bonus
 
-    db.update_user_points(user_id, total, "session",
-                          f"Sesión: {gestures_count} gestos (precisión {int(accuracy*100)}%)")
+    # Bonus por racha perfecta: racha >= 3 días Y precisión >= 80% → multiplicador x1.5
+    streak_rows = db.execute_query(
+        "SELECT daily_streak FROM user_points WHERE user_id=?", (user_id,)
+    )
+    current_streak = (streak_rows[0][0] or 0) if streak_rows else 0
+    streak_multiplier = 1.5 if (current_streak >= 3 and accuracy >= 0.8) else 1.0
+    total = int((base + bonus) * streak_multiplier)
+
+    desc = f"Sesión: {gestures_count} gestos (precisión {int(accuracy*100)}%)"
+    if streak_multiplier > 1.0:
+        desc += f" ✨ Racha perfecta x{streak_multiplier} (racha {current_streak} días)"
+
+    db.update_user_points(user_id, total, "session", desc)
 
     # Actualizar racha diaria
     _update_daily_streak(user_id)
@@ -335,8 +421,46 @@ def _check_gamification_achievements(user_id, gestures_session, accuracy):
                 earned = streak >= reqs["daily_streak"]
             elif "accuracy_rate" in reqs:
                 earned = best_accuracy >= reqs["accuracy_rate"]
-            # Logros que requieren métricas no implementadas se omiten silenciosamente
-            # (gestures_mastered, features_used, users_helped, etc.)
+            elif "gesture_mastery" in reqs:
+                gm = reqs["gesture_mastery"]
+                word = gm.get("word", "")
+                min_count = gm.get("count", 1)
+                min_conf = gm.get("min_confidence", 0.0)
+                if min_conf > 0:
+                    count_rows = db.execute_query(
+                        """SELECT COUNT(*) FROM interpretations i
+                           JOIN sessions s ON i.session_id = s.id
+                           WHERE s.user_id=? AND i.word_detected=? AND i.confidence_score >= ?""",
+                        (user_id, word, min_conf)
+                    )
+                else:
+                    count_rows = db.execute_query(
+                        """SELECT COUNT(*) FROM interpretations i
+                           JOIN sessions s ON i.session_id = s.id
+                           WHERE s.user_id=? AND i.word_detected=?""",
+                        (user_id, word)
+                    )
+                earned = (count_rows[0][0] if count_rows else 0) >= min_count
+            elif "all_gestures_min" in reqs:
+                min_each = reqs["all_gestures_min"]
+                # Obtener gestos disponibles del modelo
+                try:
+                    from training_utils import get_gestures_with_valid_keypoints
+                    available = [g.upper() for g in get_gestures_with_valid_keypoints()]
+                except Exception:
+                    available = ["ADIOS", "ADULTO", "ANCIANO", "GATO", "HOLA"]
+                all_ok = True
+                for w in available:
+                    cnt_rows = db.execute_query(
+                        """SELECT COUNT(*) FROM interpretations i
+                           JOIN sessions s ON i.session_id = s.id
+                           WHERE s.user_id=? AND i.word_detected=?""",
+                        (user_id, w)
+                    )
+                    if (cnt_rows[0][0] if cnt_rows else 0) < min_each:
+                        all_ok = False
+                        break
+                earned = all_ok
 
             if earned:
                 cursor.execute(
