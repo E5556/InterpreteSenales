@@ -110,11 +110,12 @@ class SessionsWindow(QWidget):
         self.btn_gestos    = SidebarBtn("📊", "Mis Gestos")
         self.btn_ranking   = SidebarBtn("🏅", "Ranking")
         self.btn_eval      = SidebarBtn("📝", "Modo Evaluación")
+        self.btn_evals     = SidebarBtn("📈", "Mis Evaluaciones")
 
         self._nav_btns = [
             self.btn_perfil, self.btn_sessions, self.btn_new, self.btn_learning,
             self.btn_logros, self.btn_retos, self.btn_historial,
-            self.btn_gestos, self.btn_ranking, self.btn_eval,
+            self.btn_gestos, self.btn_ranking, self.btn_eval, self.btn_evals,
         ]
         for btn in self._nav_btns:
             sb.addWidget(btn)
@@ -155,6 +156,7 @@ class SessionsWindow(QWidget):
         self._page_historial = self._build_scroll_page(self._build_historial_content)
         self._page_gestos    = self._build_scroll_page(self._build_gestos_content)
         self._page_ranking   = self._build_scroll_page(self._build_ranking_content)
+        self._page_evals     = self._build_scroll_page(self._build_evals_content)
 
         self.stack.addWidget(self._page_perfil)     # 0
         self.stack.addWidget(self._page_sessions)   # 1
@@ -163,6 +165,7 @@ class SessionsWindow(QWidget):
         self.stack.addWidget(self._page_historial)  # 4
         self.stack.addWidget(self._page_gestos)     # 5
         self.stack.addWidget(self._page_ranking)    # 6
+        self.stack.addWidget(self._page_evals)      # 7
 
         # Conexiones sidebar
         self.btn_perfil.clicked.connect(lambda: self._go(0, self.btn_perfil))
@@ -175,6 +178,7 @@ class SessionsWindow(QWidget):
         self.btn_gestos.clicked.connect(lambda: self._go(5, self.btn_gestos))
         self.btn_ranking.clicked.connect(lambda: self._go(6, self.btn_ranking))
         self.btn_eval.clicked.connect(self.open_evaluation_mode)
+        self.btn_evals.clicked.connect(lambda: self._go(7, self.btn_evals))
         self.btn_logout.clicked.connect(self.logout)
 
         self._go(0, self.btn_perfil)  # Inicia en Mi Perfil
@@ -633,6 +637,83 @@ class SessionsWindow(QWidget):
         if session_id:
             self.controller.show_history_window(session_id)
             self.close()
+
+    # ── PÁGINA: MIS EVALUACIONES ─────────────────────────────────
+    def _build_evals_content(self, lay):
+        import json
+        from gamification_db import get_evaluation_history
+
+        lay.addWidget(_lbl("📈 Mis Evaluaciones", 20, bold=True))
+        lay.addWidget(_lbl("Historial de resultados del Modo Evaluación", 12, color=C_TEXT_MUTED))
+
+        rows = get_evaluation_history(self.user_id)
+
+        if not rows:
+            lay.addWidget(_lbl("Aún no has completado ninguna evaluación.\nInicia el Modo Evaluación para ver tus resultados aquí.", 13, color=C_TEXT_MUTED, wrap=True))
+            return
+
+        RANK_MAP = [
+            (100, "PERFECTO",     "#f59e0b", "🏆"),
+            (80,  "EXCELENTE",    "#22c55e", "🥇"),
+            (60,  "BIEN",         "#3b82f6", "🥈"),
+            (40,  "REGULAR",      "#f59e0b", "🥉"),
+            (0,   "PRACTICA MÁS", "#ef4444", "💪"),
+        ]
+
+        for eval_id, score_pct, correct, total, details_json, created_at in rows:
+            rank, rank_color, rank_emoji = next(
+                (r, c, e) for threshold, r, c, e in RANK_MAP if score_pct >= threshold
+            )
+            card = QFrame()
+            card.setStyleSheet(f"QFrame{{background:{C_CARD_BG};border-radius:14px;border:1px solid {C_BORDER};}}")
+            cl = QVBoxLayout(card)
+            cl.setContentsMargins(20, 14, 20, 14)
+            cl.setSpacing(8)
+
+            # Encabezado
+            hrow = QHBoxLayout()
+            hrow.addWidget(_lbl(f"{rank_emoji}  {rank}", 15, bold=True, color=rank_color))
+            hrow.addStretch()
+            fecha = str(created_at)[:16] if created_at else ""
+            hrow.addWidget(_lbl(fecha, 11, color=C_TEXT_MUTED))
+            cl.addLayout(hrow)
+
+            # Barra de puntaje
+            bar_row = QHBoxLayout()
+            bar = QProgressBar()
+            bar.setMaximum(100)
+            bar.setValue(score_pct)
+            bar.setFixedHeight(10)
+            bar.setTextVisible(False)
+            bar.setStyleSheet(
+                f"QProgressBar{{background:{C_BORDER};border-radius:5px;}}"
+                f"QProgressBar::chunk{{background:{rank_color};border-radius:5px;}}"
+            )
+            bar_row.addWidget(bar)
+            bar_row.addWidget(_lbl(f"  {score_pct}%  ({correct}/{total})", 12, bold=True, color=rank_color))
+            cl.addLayout(bar_row)
+
+            # Detalle compacto de gestos
+            if details_json:
+                try:
+                    details = json.loads(details_json)
+                    detail_row = QHBoxLayout()
+                    for d in details:
+                        ok = d.get("ok", False)
+                        word = d.get("word", "")
+                        icon = "✅" if ok else "❌"
+                        chip = QLabel(f"{icon} {word}")
+                        chip.setFont(QFont("Segoe UI", 10))
+                        chip_bg = "#0d2d18" if ok else "#2d0d0d"
+                        chip_color = C_SUCCESS if ok else C_DANGER
+                        chip.setStyleSheet(f"background:{chip_bg};color:{chip_color};border-radius:6px;padding:3px 8px;")
+                        detail_row.addWidget(chip)
+                    detail_row.addStretch()
+                    cl.addLayout(detail_row)
+                except Exception:
+                    pass
+
+            lay.addWidget(card)
 
     def open_evaluation_mode(self):
         self.btn_eval.setChecked(True)

@@ -367,6 +367,14 @@ class EvaluationModeWindow(QWidget):
         self._running = True
         self.countdown_timer.start()
 
+        # TTS: pronunciar la palabra en background
+        try:
+            import threading
+            from text_to_speech import text_to_speech
+            threading.Thread(target=text_to_speech, args=(word.lower(),), daemon=True).start()
+        except Exception:
+            pass
+
     def _tick_countdown(self):
         self._countdown -= 1
         self.countdown_bar.setValue(self._countdown)
@@ -423,6 +431,17 @@ class EvaluationModeWindow(QWidget):
         score_pct = int(correct_count / total * 100) if total > 0 else 0
 
         self._show_results_screen(correct_count, total, score_pct)
+        # Guardar en BD en background
+        try:
+            import threading
+            from gamification_db import save_evaluation_result
+            threading.Thread(
+                target=save_evaluation_result,
+                args=(self.user_id, score_pct, correct_count, total, self._results),
+                daemon=True
+            ).start()
+        except Exception:
+            pass
 
     def _show_results_screen(self, correct, total, pct):
         # Rango de puntaje → tema visual
@@ -557,6 +576,17 @@ class EvaluationModeWindow(QWidget):
         btn_retry.clicked.connect(_retry)
         btn_row.addWidget(btn_retry)
 
+        btn_pdf = QPushButton("📄  Exportar PDF")
+        btn_pdf.setFixedHeight(44)
+        btn_pdf.setCursor(Qt.PointingHandCursor)
+        btn_pdf.setFont(QFont("Segoe UI", 12))
+        btn_pdf.setStyleSheet(
+            f"QPushButton{{background:#1e3a5f;color:#93c5fd;border:1px solid #3b82f6;border-radius:10px;}}"
+            f"QPushButton:hover{{background:#1e40af;color:white;}}"
+        )
+        btn_pdf.clicked.connect(lambda: self._export_eval_pdf(correct, total, pct))
+        btn_row.addWidget(btn_pdf)
+
         btn_close = QPushButton("← Volver al menú")
         btn_close.setFixedHeight(44)
         btn_close.setCursor(Qt.PointingHandCursor)
@@ -568,6 +598,92 @@ class EvaluationModeWindow(QWidget):
         btn_close.clicked.connect(self.close)
         btn_row.addWidget(btn_close)
         lay.addLayout(btn_row)
+
+    def _export_eval_pdf(self, correct, total, pct):
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox
+        from datetime import datetime
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Guardar reporte PDF",
+            f"evaluacion_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            "PDF Files (*.pdf)"
+        )
+        if not path:
+            return
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib import colors
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import cm
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+
+            RANK_MAP = {
+                100: ("PERFECTO",     "#f59e0b", "🏆"),
+                80:  ("EXCELENTE",    "#22c55e", "🥇"),
+                60:  ("BIEN",         "#3b82f6", "🥈"),
+                40:  ("REGULAR",      "#f59e0b", "🥉"),
+                0:   ("PRACTICA MÁS", "#ef4444", "💪"),
+            }
+            rank, rank_hex, rank_emoji = next(
+                (v for k, v in sorted(RANK_MAP.items(), reverse=True) if pct >= k), RANK_MAP[0]
+            )
+
+            doc = SimpleDocTemplate(path, pagesize=A4,
+                                    leftMargin=2*cm, rightMargin=2*cm,
+                                    topMargin=2*cm, bottomMargin=2*cm)
+            styles = getSampleStyleSheet()
+            accent = colors.HexColor("#7c3aed")
+            muted  = colors.HexColor("#64748b")
+            rank_color = colors.HexColor(rank_hex)
+
+            title_s = ParagraphStyle("t", fontSize=20, textColor=accent, fontName="Helvetica-Bold", spaceAfter=4)
+            sub_s   = ParagraphStyle("s", fontSize=11, textColor=muted,  fontName="Helvetica", spaceAfter=2)
+
+            story = []
+            story.append(Paragraph("Intérprete LSP — Reporte de Evaluación", title_s))
+            story.append(Paragraph(f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}", sub_s))
+            story.append(HRFlowable(width="100%", thickness=1, color=accent, spaceAfter=10))
+
+            rank_s = ParagraphStyle("r", fontSize=28, textColor=rank_color, fontName="Helvetica-Bold",
+                                    alignment=1, spaceAfter=4)
+            story.append(Paragraph(f"{rank_emoji} {rank}", rank_s))
+
+            score_s = ParagraphStyle("sc", fontSize=16, textColor=muted, fontName="Helvetica",
+                                     alignment=1, spaceAfter=12)
+            story.append(Paragraph(f"{correct} de {total} correctas — {pct}%", score_s))
+
+            data = [["Seña esperada", "Detectado", "Resultado", "Confianza"]]
+            for word, pred, ok, conf in self._results:
+                pred_str = pred if pred else "No detectado"
+                ok_str   = "✓ Correcto" if ok else "✗ Incorrecto"
+                ok_color = colors.HexColor("#16a34a") if ok else colors.HexColor("#dc2626")
+                data.append([word, pred_str, ok_str, f"{int(conf*100)}%" if conf else "—"])
+
+            col_w = [4*cm, 4*cm, 4*cm, 2.5*cm]
+            t = Table(data, colWidths=col_w, repeatRows=1)
+            t.setStyle(TableStyle([
+                ("BACKGROUND",  (0,0), (-1,0), accent),
+                ("TEXTCOLOR",   (0,0), (-1,0), colors.white),
+                ("FONTNAME",    (0,0), (-1,0), "Helvetica-Bold"),
+                ("ALIGN",       (0,0), (-1,-1), "CENTER"),
+                ("FONTSIZE",    (0,0), (-1,-1), 11),
+                ("ROWBACKGROUNDS", (0,1), (-1,-1), [colors.white, colors.HexColor("#f8f9ff")]),
+                ("GRID",        (0,0), (-1,-1), 0.5, colors.HexColor("#e2e8f0")),
+                ("TOPPADDING",  (0,0), (-1,-1), 7),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 7),
+            ]))
+            # Colorear columna resultado
+            for i, (_, _, ok, _) in enumerate(self._results, start=1):
+                c = colors.HexColor("#16a34a") if ok else colors.HexColor("#dc2626")
+                t.setStyle(TableStyle([("TEXTCOLOR", (2, i), (2, i), c)]))
+
+            story.append(t)
+            story.append(Spacer(1, 0.5*cm))
+            story.append(Paragraph(f"Generado el {datetime.now().strftime('%d/%m/%Y %H:%M')} — Sistema Intérprete LSP", sub_s))
+            doc.build(story)
+
+            QMessageBox.information(self, "PDF exportado", f"Reporte guardado en:\n{path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo generar el PDF:\n{str(e)}")
 
     # ── CIERRE ───────────────────────────────────────────────────
     def closeEvent(self, event):

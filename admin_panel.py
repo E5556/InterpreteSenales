@@ -148,10 +148,12 @@ class AdminPanel(QWidget):
         nav_label.setStyleSheet(f"color: {C_TEXT_MUTED}; font-size: 10px; font-weight: bold; padding: 4px 4px 2px 4px;")
         layout.addWidget(nav_label)
 
-        self.btn_stats    = SidebarButton("📊", "Estadísticas")
-        self.btn_gestures = SidebarButton("🤲", "Gestionar Gestos")
-        self.btn_learning = SidebarButton("🎓", "Modo Aprendizaje")
+        self.btn_stats     = SidebarButton("📊", "Estadísticas")
+        self.btn_analytics = SidebarButton("🔍", "Analíticas globales")
+        self.btn_gestures  = SidebarButton("🤲", "Gestionar Gestos")
+        self.btn_learning  = SidebarButton("🎓", "Modo Aprendizaje")
         layout.addWidget(self.btn_stats)
+        layout.addWidget(self.btn_analytics)
         layout.addWidget(self.btn_gestures)
         layout.addWidget(self.btn_learning)
 
@@ -185,6 +187,7 @@ class AdminPanel(QWidget):
 
         # Conexiones sidebar
         self.btn_stats.clicked.connect(self.handle_show_statistics)
+        self.btn_analytics.clicked.connect(self.handle_show_analytics)
         self.btn_gestures.clicked.connect(self.handle_manage_gestures)
         self.btn_learning.clicked.connect(self.handle_learning_mode)
         self.btn_sessions.clicked.connect(self.handle_view_sessions)
@@ -464,6 +467,14 @@ class AdminPanel(QWidget):
             show_integrated_statistics()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo abrir las estadísticas:\n{e}")
+
+    def handle_show_analytics(self):
+        try:
+            from analytics_window import AnalyticsWindow
+            self._analytics_win = AnalyticsWindow(self)
+            self._analytics_win.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo abrir analíticas:\n{e}")
 
     def logout(self):
         self.controller.logout()

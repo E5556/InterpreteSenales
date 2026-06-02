@@ -482,3 +482,41 @@ def sync_user_gamification(user_id):
     """Recalcula y asigna logros pendientes usando datos históricos reales.
     Llamar una vez para sincronizar usuarios con sesiones previas a la gamificación."""
     return _check_gamification_achievements(user_id, 0, 0.0)
+
+
+def ensure_evaluation_table():
+    """Crea la tabla evaluation_results si no existe."""
+    db = DatabaseManager()
+    db.execute_query("""
+        CREATE TABLE IF NOT EXISTS evaluation_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            score_pct INTEGER NOT NULL,
+            correct INTEGER NOT NULL,
+            total INTEGER NOT NULL,
+            details TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+
+def save_evaluation_result(user_id, score_pct, correct, total, results):
+    """Guarda el resultado de una evaluación. results = [(word, pred, ok, conf), ...]"""
+    ensure_evaluation_table()
+    db = DatabaseManager()
+    db.execute_query(
+        "INSERT INTO evaluation_results (user_id, score_pct, correct, total, details) VALUES (?,?,?,?,?)",
+        (user_id, score_pct, correct, total, json.dumps(
+            [{"word": w, "pred": p, "ok": ok, "conf": round(c, 4)} for w, p, ok, c in results]
+        ))
+    )
+
+
+def get_evaluation_history(user_id, limit=20):
+    """Retorna los últimos resultados de evaluación del usuario."""
+    ensure_evaluation_table()
+    db = DatabaseManager()
+    return db.execute_query(
+        "SELECT id, score_pct, correct, total, details, created_at FROM evaluation_results WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
+        (user_id, limit)
+    )

@@ -229,6 +229,50 @@ class VideoRecorder(QMainWindow):
         )
         right_layout.addWidget(self.status_label)
 
+        # ── HUD de sesión en tiempo real ──────────────────────────
+        hud_frame = QWidget(self)
+        hud_frame.setStyleSheet("background:#1e1e2e; border-radius:8px; padding:2px;")
+        hud_layout = QHBoxLayout(hud_frame)
+        hud_layout.setContentsMargins(10, 6, 10, 6)
+        hud_layout.setSpacing(16)
+
+        self.hud_gestos = QLabel("✋ 0 gestos")
+        self.hud_gestos.setStyleSheet("color:#a78bfa; font-weight:bold; font-size:12px; background:transparent;")
+        hud_layout.addWidget(self.hud_gestos)
+
+        self.hud_precision = QLabel("🎯 —%")
+        self.hud_precision.setStyleSheet("color:#22c55e; font-weight:bold; font-size:12px; background:transparent;")
+        hud_layout.addWidget(self.hud_precision)
+
+        self.hud_racha = QLabel("🔥 — días")
+        self.hud_racha.setStyleSheet("color:#f59e0b; font-weight:bold; font-size:12px; background:transparent;")
+        hud_layout.addWidget(self.hud_racha)
+
+        self.hud_pts = QLabel("⭐ — pts")
+        self.hud_pts.setStyleSheet("color:#7c3aed; font-weight:bold; font-size:12px; background:transparent;")
+        hud_layout.addWidget(self.hud_pts)
+
+        hud_layout.addStretch()
+        right_layout.addWidget(hud_frame)
+
+        # Cargar racha y puntos del usuario en background
+        self._hud_gestos_sesion = 0
+        self._hud_conf_sum = 0.0
+        self._hud_conf_count = 0
+        try:
+            import threading
+            def _load_hud():
+                try:
+                    from gamification_db import get_user_gamification_profile
+                    p = get_user_gamification_profile(self.user_id)
+                    self.hud_racha.setText(f"🔥 {p['daily_streak']} días")
+                    self.hud_pts.setText(f"⭐ {p['total_points']} pts")
+                except Exception:
+                    pass
+            threading.Thread(target=_load_hud, daemon=True).start()
+        except Exception:
+            pass
+
         # Frase en construcción (gesto actual acumulado)
         self.phrase_label = QLabel("Frase actual: —", self)
         self.phrase_label.setAlignment(Qt.AlignCenter)
@@ -494,10 +538,15 @@ class VideoRecorder(QMainWindow):
                                             add_interpretation(self.session_id, gesture_name.upper(), confidence)
                                     except Exception as _e:
                                         print(f"[BD] Error guardando interpretación: {_e}")
-                                    # Acumular confidence para gamificación
+                                    # Acumular confidence para gamificación y HUD
                                     self._conf_sum = getattr(self, '_conf_sum', 0.0) + confidence
                                     self._conf_count = getattr(self, '_conf_count', 0) + 1
                                     self._session_avg_confidence = self._conf_sum / self._conf_count
+                                    # Actualizar HUD
+                                    self._hud_gestos_sesion = getattr(self, '_hud_gestos_sesion', 0) + 1
+                                    pct_hud = int(self._session_avg_confidence * 100)
+                                    self.hud_gestos.setText(f"✋ {self._hud_gestos_sesion} gestos")
+                                    self.hud_precision.setText(f"🎯 {pct_hud}%")
 
                     self.prediction_filter.reset()
 
