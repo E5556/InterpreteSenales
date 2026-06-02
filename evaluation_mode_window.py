@@ -16,6 +16,35 @@ from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont, QImage, QPixmap, QIcon
 
 C_BG       = "#0f0f1a"
+
+# ── Funciones de keypoints (copiadas de main.py) ────────────────
+def _interp_subspace(frames_array, target_length):
+    n = len(frames_array)
+    if n == target_length:
+        return frames_array
+    indices = np.linspace(0, n - 1, target_length)
+    result = []
+    for i in indices:
+        lo, hi = int(np.floor(i)), int(np.ceil(i))
+        w = i - lo
+        result.append(frames_array[lo] if lo == hi else (1 - w) * frames_array[lo] + w * frames_array[hi])
+    return result
+
+def _extract_keypoints(results):
+    pose = np.array([[r.x, r.y, r.z, r.visibility] for r in results.pose_landmarks.landmark]).flatten() if results.pose_landmarks else np.zeros(33*4)
+    face = np.array([[r.x, r.y, r.z] for r in results.face_landmarks.landmark]).flatten() if results.face_landmarks else np.zeros(468*3)
+    lh   = np.array([[r.x, r.y, r.z] for r in results.left_hand_landmarks.landmark]).flatten() if results.left_hand_landmarks else np.zeros(21*3)
+    rh   = np.array([[r.x, r.y, r.z] for r in results.right_hand_landmarks.landmark]).flatten() if results.right_hand_landmarks else np.zeros(21*3)
+    return np.concatenate([pose, face, lh, rh])
+
+def _normalize_keypoints(keypoints, target_length=15):
+    arr  = [np.array(kp) for kp in keypoints]
+    pose = _interp_subspace([kp[:132]      for kp in arr], target_length)
+    face = _interp_subspace([kp[132:1536]  for kp in arr], target_length)
+    lh   = _interp_subspace([kp[1536:1599] for kp in arr], target_length)
+    rh   = _interp_subspace([kp[1599:]     for kp in arr], target_length)
+    return [np.concatenate([pose[i], face[i], lh[i], rh[i]]) for i in range(target_length)]
+
 C_ACCENT   = "#7c3aed"
 C_SUCCESS  = "#22c55e"
 C_DANGER   = "#ef4444"
@@ -54,7 +83,7 @@ class EvaluationModeWindow(QWidget):
         self.setMinimumSize(800, 500)
         self.setStyleSheet(f"background:{C_BG};")
 
-        # Estado interno
+        # Estado interno — evaluación
         self._words = []
         self._current_idx = 0
         self._results = []          # (word, predicted, correct, confidence)
@@ -66,6 +95,17 @@ class EvaluationModeWindow(QWidget):
         self._model = None
         self._word_ids = []
         self._running = False
+
+        # Estado interno — detector (igual que main.py)
+        self._kp_seq      = []
+        self._count_frame = 0
+        self._fix_frames  = 0
+        self._recording   = False
+        self._margin_frame  = 1
+        self._delay_frames  = 2
+        self._min_length    = 5    # MIN_LENGTH_FRAMES
+        self._model_frames  = 15   # MODEL_FRAMES
+        self._pred_filter   = None
 
         self._build_ui()
         self._load_model_async()
@@ -203,6 +243,8 @@ class EvaluationModeWindow(QWidget):
             QTimer.singleShot(0, lambda: self._on_model_error(str(e)))
 
     def _on_model_loaded(self):
+        from prediction_filter import PredictionFilter
+        self._pred_filter = PredictionFilter(window_size=3, confidence_threshold=0.60)
         self.btn_start.setEnabled(True)
         self.word_display.setText("¡Listo!")
         self.word_sub.setText(f"Gestos disponibles: {', '.join(g.upper() for g in self._word_ids)}")
@@ -225,33 +267,47 @@ class EvaluationModeWindow(QWidget):
 
         if self._running and self._holistic and self._model:
             try:
-                from helpers import mediapipe_detection, there_hand, get_keypoints, normalize_keypoints
-                from prediction_filter import PredictionFilter
+                from helpers import mediapipe_detection, there_hand
+                if self._pred_filter is None:
+                    return
                 results = mediapipe_detection(frame, self._holistic)
-                if there_hand(results):
-                    if not hasattr(self, '_kp_seq'):
+                hand_present = there_hand(results)
+
+                if hand_present or self._recording:
+                    self._recording = False
+                    self._count_frame += 1
+                    if self._count_frame > self._margin_frame:
+                        self._kp_seq.append(_extract_keypoints(results))
+                    self.detection_label.setText(f"Grabando... ({len(self._kp_seq)} frames)")
+                else:
+                    if self._count_frame >= self._min_length + self._margin_frame:
+                        self._fix_frames += 1
+                        if self._fix_frames < self._delay_frames:
+                            self._recording = True
+                        else:
+                            # Recortar frames de margen
+                            trim = self._margin_frame + self._delay_frames
+                            if len(self._kp_seq) > trim:
+                                self._kp_seq = self._kp_seq[:-trim]
+
+                            if len(self._kp_seq) >= self._min_length:
+                                kp_norm = _normalize_keypoints(self._kp_seq, self._model_frames)
+                                res = self._model.predict(np.expand_dims(kp_norm, axis=0), verbose=0)[0]
+                                name, conf = self._pred_filter.add_prediction(res, self._word_ids)
+                                if name:
+                                    self._last_prediction = name
+                                    self._last_confidence = conf
+                                    pct = int(conf * 100)
+                                    self.detection_label.setText(f"✋ Detectado: {name.upper()} ({pct}%)")
+
+                    if not self._recording:
+                        self._count_frame = 0
+                        self._fix_frames = 0
                         self._kp_seq = []
-                        self._pred_filter = PredictionFilter(window_size=3, confidence_threshold=0.60)
-                    kp = get_keypoints(results)
-                    self._kp_seq.append(kp)
-                    if len(self._kp_seq) > 15:
-                        self._kp_seq = self._kp_seq[-15:]
-                    if len(self._kp_seq) == 15:
-                        from constants import MAX_LENGTH_FRAMES
-                        padded = self._kp_seq[:]
-                        while len(padded) < MAX_LENGTH_FRAMES:
-                            padded.insert(0, np.zeros_like(padded[0]))
-                        kp_arr = np.array(padded[-MAX_LENGTH_FRAMES:])
-                        kp_norm = normalize_keypoints(kp_arr)
-                        res = self._model.predict(np.expand_dims(kp_norm, axis=0), verbose=0)[0]
-                        name, conf = self._pred_filter.add_prediction(res, self._word_ids)
-                        if name:
-                            self._last_prediction = name
-                            self._last_confidence = conf
-                            pct = int(conf * 100)
-                            self.detection_label.setText(f"Detectando: {name.upper()} ({pct}%)")
-            except Exception:
-                pass
+                        if not hand_present:
+                            self.detection_label.setText("Esperando seña...")
+            except Exception as ex:
+                self.detection_label.setText(f"Error: {ex}")
 
         h, w, ch = frame_rgb.shape
         qi = QImage(frame_rgb.data, w, h, ch * w, QImage.Format_RGB888)
@@ -291,10 +347,14 @@ class EvaluationModeWindow(QWidget):
 
         self._last_prediction = None
         self._last_confidence = 0.0
-        if hasattr(self, '_kp_seq'):
-            self._kp_seq = []
-        if hasattr(self, '_pred_filter'):
-            del self._pred_filter
+        # Resetear estado del detector
+        self._kp_seq      = []
+        self._count_frame = 0
+        self._fix_frames  = 0
+        self._recording   = False
+        if self._pred_filter:
+            from prediction_filter import PredictionFilter
+            self._pred_filter = PredictionFilter(window_size=3, confidence_threshold=0.60)
 
         self._countdown = SECONDS_PER_WORD * 10  # ticks de 100ms
         self._running = True
