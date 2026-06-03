@@ -15,3 +15,65 @@ data/sequences/
 # Modelo entrenado — regenerable desde Colab
 data/*.keras
 data/*.h5
+
+# Bases de datos (contienen datos personales)
+*.db
+*.sqlite
+
+# Archivos de depuración y versiones antiguas
+debug_*.py
+main_*.py
+test_*.py
+optimized_system*.py
+acceder_estadisticas*.py
+estadisticas_*.py
+estadisticas_*.json
+estadisticas_*.pdf
+demo_*.py
+estadisticas_sistema*.json
+estadisticas_sistema*.pdf
+estadisticas_tiempo_real*.pdf
+estadisticas_usuario_*.json
+
+# Versiones antiguas y archivos de migración
+*_backup*.db
+usuarios_expanded.db
+migrate_*.py
+verify_*.py
+explore_*.py
+fix_*.py
+quick_retrain.py
+retrain_model.py
+simple_retrain.py
+improved_retrain.py
+train_optimized_model.py
+create_*.py
+install_*.py
+iniciar_*.py
+probar_*.py
+identificar_*.py
+diagnosticar_*.py
+
+# Modelos alternativos (solo conservar actions_15.keras)
+models/actions_20*.keras
+models/test_model.keras
+models/gestures_demo.txt
+models/model_info.txt
+models/confusion_matrix_retrained.png
+
+# Documentos temporales generados
+*.sql
+*.xml
+database_diagram.txt
+dbeaver_*.sql
+dbeaver_*.xml
+expanded_database_design*.sql
+sql_queries_for_browser.sql
+explore_expanded_db.sql
+
+# Archivos de configuración locales
+.project
+.claude/
+
+# PDFs y JSONs de estadísticas generados
+graficos/
