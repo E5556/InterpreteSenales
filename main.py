@@ -340,7 +340,16 @@ class VideoRecorder(QMainWindow):
         self.clear_button = QPushButton("🗑️ Limpiar Conversación", self)
         self.clear_button.clicked.connect(self.clear_conversation)
         controls_layout.addWidget(self.clear_button)
-        
+
+        # Checkbox modo continuo (rolling buffer — experimental)
+        self.continuous_checkbox = QCheckBox("🔄 Modo continuo", self)
+        self.continuous_checkbox.setChecked(False)
+        self.continuous_checkbox.setToolTip(
+            "Modo experimental: predice en vivo sin necesitar bajar la mano.\n"
+            "Si baja la precisión, desactívalo."
+        )
+        controls_layout.addWidget(self.continuous_checkbox)
+
         # Botón para volver
         self.back_button = QPushButton("🔙 Volver al Menú de Sesiones", self)
         controls_layout.addWidget(self.back_button)
@@ -455,6 +464,13 @@ class VideoRecorder(QMainWindow):
             self.gesture_cooldown = 1.5   # segundos mínimos entre el mismo gesto
             self.any_gesture_cooldown = 0.4  # segundos mínimos entre cualquier gesto
 
+            # Rolling buffer para modo continuo
+            self._rolling_buf = []          # ventana deslizante de keypoints
+            self._rolling_size = int(MODEL_FRAMES)  # 15 frames
+            self._rolling_skip = 5          # predecir cada N frames nuevos
+            self._rolling_since_pred = 0    # contador desde última predicción
+            self._cont_filter = PredictionFilter(window_size=2, confidence_threshold=self.confidence_threshold)
+
             print(f"Cargando modelo desde: {MODEL_PATH}")
             self.model = load_model(MODEL_PATH)
             self.recording = False
@@ -490,6 +506,81 @@ class VideoRecorder(QMainWindow):
 
             # Actualizar ConversationManager con estado de manos
             self.conversation_manager.update_hands_detection(hand_present)
+
+            # ── MODO CONTINUO (rolling buffer) ────────────────────
+            if self.continuous_checkbox.isChecked() and hand_present:
+                self._rolling_buf.append(extract_keypoints(results))
+                if len(self._rolling_buf) > self._rolling_size:
+                    self._rolling_buf.pop(0)
+                self._rolling_since_pred += 1
+
+                if (len(self._rolling_buf) == self._rolling_size and
+                        self._rolling_since_pred >= self._rolling_skip):
+                    self._rolling_since_pred = 0
+                    try:
+                        kp_norm = normalize_keypoints(self._rolling_buf, self._rolling_size)
+                        res = self.model.predict(np.expand_dims(kp_norm, axis=0), verbose=0)[0]
+                        gesture_name, confidence = self._cont_filter.add_prediction(res, self.word_ids)
+                        pct = int(confidence * 100)
+
+                        if gesture_name and confidence >= self.confidence_threshold:
+                            word_id = gesture_name.split('-')[0]
+                            sent = get_display_text(word_id)
+                            if sent:
+                                now = time.time()
+                                same_ok = (gesture_name != self.last_gesture_name or
+                                           (now - self.last_gesture_time) >= self.gesture_cooldown)
+                                any_ok  = (now - self.last_gesture_time) >= self.any_gesture_cooldown
+                                if same_ok and any_ok:
+                                    self.conversation_manager.add_gesture(sent, confidence, now)
+                                    self.last_gesture_name = gesture_name
+                                    self.last_gesture_time = now
+                                    try:
+                                        from database import add_interpretation
+                                        if gesture_name in self.word_ids:
+                                            add_interpretation(self.session_id, gesture_name.upper(), confidence)
+                                    except Exception:
+                                        pass
+                                    self._conf_sum = getattr(self, '_conf_sum', 0.0) + confidence
+                                    self._conf_count = getattr(self, '_conf_count', 0) + 1
+                                    self._session_avg_confidence = self._conf_sum / self._conf_count
+                                    self._hud_gestos_sesion = getattr(self, '_hud_gestos_sesion', 0) + 1
+                                    pct_hud = int(self._session_avg_confidence * 100)
+                                    self.hud_gestos.setText(f"✋ {self._hud_gestos_sesion} gestos")
+                                    self.hud_precision.setText(f"{pct_hud}%")
+                                    self.hud_conf_bar.setValue(pct_hud)
+                                    bar_color = "#22c55e" if pct_hud >= 80 else ("#f59e0b" if pct_hud >= 60 else "#ef4444")
+                                    self.hud_conf_bar.setStyleSheet(
+                                        f"QProgressBar{{background:#2d2d44;border-radius:5px;}}"
+                                        f"QProgressBar::chunk{{background:{bar_color};border-radius:5px;}}"
+                                    )
+                                    self.hud_precision.setStyleSheet(
+                                        f"color:{bar_color};font-weight:bold;font-size:11px;background:transparent;"
+                                    )
+
+                        self.status_label.setText(
+                            f"🔄 Continuo | {gesture_name or '…'} {pct}%" if gesture_name else "🔄 Continuo | escaneando..."
+                        )
+                        self.status_label.setStyleSheet(
+                            "QLabel{background:#1a1a3a;color:#a78bfa;padding:4px;border-radius:4px;font-size:12px;}"
+                        )
+                    except Exception:
+                        pass
+
+                # En modo continuo no ejecutar el flujo clásico
+                self._update_display(image, results)
+                return
+            elif self.continuous_checkbox.isChecked() and not hand_present:
+                # Sin mano: limpiar buffer continuo y mostrar estado idle
+                self._rolling_buf.clear()
+                self._rolling_since_pred = 0
+                self.status_label.setText("🔄 Continuo | esperando mano...")
+                self.status_label.setStyleSheet(
+                    "QLabel{background:#1a1a3a;color:#64748b;padding:4px;border-radius:4px;font-size:12px;}"
+                )
+                self._update_display(image, results)
+                return
+            # ── FIN MODO CONTINUO ─────────────────────────────────
 
             if hand_present or self.recording:
                 self.recording = False
@@ -627,6 +718,26 @@ class VideoRecorder(QMainWindow):
             
         except Exception as e:
             print(f"Error en update_frame: {e}")
+
+    def _update_display(self, image, results):
+        """Dibuja keypoints y actualiza el video_label. Reutilizado por ambos modos."""
+        try:
+            draw_keypoints(image, results)
+            completed = self.conversation_manager.check_timeout()
+            if completed:
+                self.interpretation_text.append(f">> {completed}")
+                self.phrase_label.setText("Frase actual: —")
+                threading.Thread(target=text_to_speech, args=(completed,), daemon=True).start()
+            phrase = self.conversation_manager.get_current_phrase()
+            if phrase:
+                self.phrase_label.setText(f"Frase actual: {phrase}")
+            height, width, channel = image.shape
+            qImg = QImage(image.data, width, height, channel * width, QImage.Format_RGB888)
+            self.video_label.setPixmap(QPixmap.fromImage(
+                qImg.scaled(self.video_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            ))
+        except Exception:
+            pass
 
     def go_back(self):
         self.controller.go_back_to_sessions(self.user_id)
