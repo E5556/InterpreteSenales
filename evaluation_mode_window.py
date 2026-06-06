@@ -78,7 +78,7 @@ class EvaluationModeWindow(QWidget):
         self.user_id = user_id
         self.controller = controller
 
-        self.setWindowTitle("Modo Evaluación — Intérprete LSP")
+        self.setWindowTitle("Modo Evaluación — Intérprete LSC")
         self.setGeometry(150, 80, 960, 620)
         self.setMinimumSize(800, 500)
         self.setStyleSheet(f"background:{C_BG};")
@@ -639,7 +639,7 @@ class EvaluationModeWindow(QWidget):
             sub_s   = ParagraphStyle("s", fontSize=11, textColor=muted,  fontName="Helvetica", spaceAfter=2)
 
             story = []
-            story.append(Paragraph("Intérprete LSP — Reporte de Evaluación", title_s))
+            story.append(Paragraph("Intérprete LSC — Reporte de Evaluación", title_s))
             story.append(Paragraph(f"Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')}", sub_s))
             story.append(HRFlowable(width="100%", thickness=1, color=accent, spaceAfter=10))
 
@@ -678,7 +678,7 @@ class EvaluationModeWindow(QWidget):
 
             story.append(t)
             story.append(Spacer(1, 0.5*cm))
-            story.append(Paragraph(f"Generado el {datetime.now().strftime('%d/%m/%Y %H:%M')} — Sistema Intérprete LSP", sub_s))
+            story.append(Paragraph(f"Generado el {datetime.now().strftime('%d/%m/%Y %H:%M')} — Sistema Intérprete LSC", sub_s))
             doc.build(story)
 
             QMessageBox.information(self, "PDF exportado", f"Reporte guardado en:\n{path}")

@@ -14,9 +14,9 @@ C_MUTED  = "#94a3b8"
 STEPS = [
     {
         "emoji": "👋",
-        "title": "¡Bienvenido al Intérprete LSP!",
+        "title": "¡Bienvenido al Intérprete LSC!",
         "body": (
-            "Este sistema reconoce <b>lengua de señas peruana</b> en tiempo real "
+            "Este sistema reconoce <b>lengua de señas colombiana</b> en tiempo real "
             "usando tu cámara y un modelo de inteligencia artificial.<br><br>"
             "En los siguientes pasos te explicamos cómo sacarle el máximo provecho."
         ),
@@ -108,7 +108,7 @@ class OnboardingWindow(QDialog):
         super().__init__(parent)
         self.user_id = user_id
         self.db_path = db_path
-        self.setWindowTitle("Bienvenida — Intérprete LSP")
+        self.setWindowTitle("Bienvenida — Intérprete LSC")
         self.setFixedSize(560, 480)
         self.setStyleSheet(f"background:{C_BG};")
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)

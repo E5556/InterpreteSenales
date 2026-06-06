@@ -1,5 +1,5 @@
 """
-Ventana de Modo de Aprendizaje - Lenguaje de Señas Peruano
+Ventana de Modo de Aprendizaje - Lengua de Señas Colombiana
 """
 
 import sys
@@ -143,7 +143,7 @@ class LearningModeWindow(QMainWindow):
         title_lbl.setStyleSheet("color:white; padding-bottom:4px; background:transparent;")
         sb_lay.addWidget(title_lbl)
 
-        sub_lbl = QLabel("Lengua de Señas Peruana")
+        sub_lbl = QLabel("Lengua de Señas Colombiana")
         sub_lbl.setFont(QFont("Segoe UI", 10))
         sub_lbl.setStyleSheet(f"color:{C_ACCENT_L}; padding-bottom:18px; background:transparent;")
         sb_lay.addWidget(sub_lbl)

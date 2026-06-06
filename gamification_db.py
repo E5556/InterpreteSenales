@@ -575,7 +575,7 @@ def generate_level_certificate(level_info, output_path):
     # Título
     c.setFillColor(colors.HexColor("#a78bfa"))
     c.setFont("Helvetica", 13)
-    c.drawCentredString(W/2, H - 3*cm, "SISTEMA INTÉRPRETE LSP")
+    c.drawCentredString(W/2, H - 3*cm, "SISTEMA INTÉRPRETE LSC")
 
     c.setFillColor(colors.HexColor("#f8fafc"))
     c.setFont("Helvetica-Bold", 36)
@@ -614,6 +614,6 @@ def generate_level_certificate(level_info, output_path):
     c.drawCentredString(W/2, H - 14.5*cm, f"Fecha: {datetime.now().strftime('%d de %B de %Y')}")
 
     c.setFont("Helvetica", 10)
-    c.drawCentredString(W/2, 1.6*cm, "Intérprete LSP — Sistema de reconocimiento de lengua de señas peruana")
+    c.drawCentredString(W/2, 1.6*cm, "Intérprete LSC — Sistema de reconocimiento de lengua de señas colombiana")
 
     c.save()

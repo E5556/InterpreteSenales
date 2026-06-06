@@ -252,7 +252,7 @@ class HistoryWindow(QWidget):
         normal      = styles["Normal"]
 
         story = []
-        story.append(Paragraph("Intérprete LSP — Reporte de Sesión", title_style))
+        story.append(Paragraph("Intérprete LSC — Reporte de Sesión", title_style))
         story.append(Paragraph(f"Sesión #{self.session_id}  •  Usuario: {self.username}  •  Fecha: {str(self.start_time)[:16] if self.start_time else 'Sin fecha'}", sub_style))
         story.append(HRFlowable(width="100%", thickness=1, color=accent, spaceAfter=12))
 
@@ -289,7 +289,7 @@ class HistoryWindow(QWidget):
         ]))
         story.append(t)
         story.append(Spacer(1, 0.6*cm))
-        story.append(Paragraph(f"Generado el {datetime.now().strftime('%d/%m/%Y %H:%M')} — Sistema Intérprete LSP", sub_style))
+        story.append(Paragraph(f"Generado el {datetime.now().strftime('%d/%m/%Y %H:%M')} — Sistema Intérprete LSC", sub_style))
         doc.build(story)
 
     def go_back(self):

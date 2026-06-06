@@ -83,7 +83,7 @@ class PracticeModeWindow(QWidget):
         self.controller = controller
         self.target_gesture = target_gesture  # gesto a practicar (o None = todos)
 
-        self.setWindowTitle("Modo Práctica — Intérprete LSP")
+        self.setWindowTitle("Modo Práctica — Intérprete LSC")
         self.setGeometry(150, 80, 960, 600)
         self.setMinimumSize(800, 500)
         self.setStyleSheet(f"background:{C_BG};")
