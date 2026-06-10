@@ -21,23 +21,37 @@ def main():
         print("   Ejecuta primero el Paso 1 (Normalizar + Procesar Keypoints).")
         sys.exit(1)
 
-    h5_files = [f for f in os.listdir(KEYPOINTS_PATH) if f.endswith('.h5')]
+    all_h5   = sorted(f for f in os.listdir(KEYPOINTS_PATH) if f.endswith('.h5'))
+    orig     = [f for f in all_h5 if '_augmented' not in f]
+    augmented = [f for f in all_h5 if '_augmented' in f]
 
-    if not h5_files:
-        print("\n❌ No hay archivos .h5 en data/keypoints/")
+    if not orig:
+        print("\nNo hay archivos .h5 en data/keypoints/")
         print("   Ejecuta primero el Paso 1 desde el Panel de Entrenamiento.")
         sys.exit(1)
 
-    print(f"\n✅ Archivos .h5 listos para subir ({len(h5_files)} gestos):\n")
-    total_bytes = 0
-    for f in sorted(h5_files):
-        path = os.path.join(KEYPOINTS_PATH, f)
-        size_mb = os.path.getsize(path) / (1024 * 1024)
-        total_bytes += os.path.getsize(path)
-        print(f"   • {f:<25} {size_mb:>7.1f} MB")
+    h5_files = all_h5  # subir todos
+
+    def _print_group(files, label):
+        total = 0
+        print(f"\n  {label}:")
+        for f in files:
+            path = os.path.join(KEYPOINTS_PATH, f)
+            size_mb = os.path.getsize(path) / (1024 * 1024)
+            total += os.path.getsize(path)
+            aug_tag = " (aumentado)" if '_augmented' in f else ""
+            print(f"   {f:<35} {size_mb:>7.1f} MB{aug_tag}")
+        return total
+
+    print(f"\nArchivos .h5 listos para subir ({len(h5_files)} en total):")
+    total_bytes  = _print_group(orig, f"Originales ({len(orig)} gestos)")
+    total_bytes += _print_group(augmented, f"Aumentados ({len(augmented)} gestos — generados con augment_data.py)")
 
     total_mb = total_bytes / (1024 * 1024)
-    print(f"\n   Total a subir: {total_mb:.1f} MB")
+    if not augmented:
+        print("\n  CONSEJO: ejecuta 'python augment_data.py' para generar datos")
+        print("  aumentados. Mejora la robustez del modelo sin capturar mas gestos.")
+    print(f"\n  Total a subir: {total_mb:.1f} MB")
 
     print("\n" + "=" * 55)
     print("  PASOS PARA SUBIR A GOOGLE DRIVE")
