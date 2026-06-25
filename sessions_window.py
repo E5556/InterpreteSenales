@@ -116,12 +116,13 @@ class SessionsWindow(QWidget):
         self.btn_comparativa = SidebarBtn("📉", "Comparativa")
         self.btn_meta        = SidebarBtn("🎯", "Mi Meta Diaria")
         self.btn_practica    = SidebarBtn("🤟", "Modo Práctica")
+        self.btn_continuo    = SidebarBtn("🌊", "Modo Continuo")
 
         self._nav_btns = [
             self.btn_perfil, self.btn_sessions, self.btn_new, self.btn_learning,
             self.btn_logros, self.btn_retos, self.btn_historial,
             self.btn_gestos, self.btn_ranking, self.btn_eval, self.btn_evals,
-            self.btn_comparativa, self.btn_meta, self.btn_practica,
+            self.btn_comparativa, self.btn_meta, self.btn_practica, self.btn_continuo,
         ]
         for btn in self._nav_btns:
             sb.addWidget(btn)
@@ -192,6 +193,7 @@ class SessionsWindow(QWidget):
         self.btn_comparativa.clicked.connect(lambda: self._go(8, self.btn_comparativa))
         self.btn_meta.clicked.connect(lambda: self._go(9, self.btn_meta))
         self.btn_practica.clicked.connect(lambda: self.open_practice_mode(None))
+        self.btn_continuo.clicked.connect(self.open_continuous_mode)
         self.btn_logout.clicked.connect(self.logout)
 
         self._go(0, self.btn_perfil)  # Inicia en Mi Perfil
@@ -1020,6 +1022,16 @@ class SessionsWindow(QWidget):
                     pass
 
             lay.addWidget(card)
+
+    def open_continuous_mode(self):
+        self.btn_continuo.setChecked(True)
+        try:
+            from continuous_mode_window import ContinuousModeWindow
+            self._continuous_window = ContinuousModeWindow(self.user_id, self.controller)
+            self._continuous_window.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo abrir el modo continuo:\n{str(e)}")
+        self.btn_continuo.setChecked(False)
 
     def open_practice_mode(self, gesture=None):
         self.btn_practica.setChecked(True)
