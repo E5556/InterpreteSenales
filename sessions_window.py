@@ -16,7 +16,7 @@ try:
     _MATPLOTLIB_OK = True
 except Exception:
     _MATPLOTLIB_OK = False
-from database import get_user_sessions
+from database import get_database_name
 
 C_SIDEBAR_BG   = "#1e1e2e"
 C_ACCENT       = "#7c3aed"
@@ -117,6 +117,7 @@ class SessionsWindow(QWidget):
         self.btn_meta        = SidebarBtn("🎯", "Mi Meta Diaria")
         self.btn_practica    = SidebarBtn("🤟", "Modo Práctica")
         self.btn_continuo    = SidebarBtn("🌊", "Modo Continuo")
+        self.btn_diccionario = SidebarBtn("📖", "Diccionario LSC")
 
         self._nav_btns = [
             self.btn_perfil, self.btn_sessions, self.btn_new, self.btn_learning,
@@ -126,6 +127,7 @@ class SessionsWindow(QWidget):
         ]
         for btn in self._nav_btns:
             sb.addWidget(btn)
+        sb.addWidget(self.btn_diccionario)
 
         if is_admin_mode:
             self.btn_new.hide()
@@ -189,11 +191,12 @@ class SessionsWindow(QWidget):
         self.btn_gestos.clicked.connect(lambda: self._go(5, self.btn_gestos))
         self.btn_ranking.clicked.connect(lambda: self._go(6, self.btn_ranking))
         self.btn_eval.clicked.connect(self.open_evaluation_mode)
-        self.btn_evals.clicked.connect(lambda: self._go(7, self.btn_evals))
+        self.btn_evals.clicked.connect(self._open_evals)
         self.btn_comparativa.clicked.connect(lambda: self._go(8, self.btn_comparativa))
         self.btn_meta.clicked.connect(lambda: self._go(9, self.btn_meta))
         self.btn_practica.clicked.connect(lambda: self.open_practice_mode(None))
         self.btn_continuo.clicked.connect(self.open_continuous_mode)
+        self.btn_diccionario.clicked.connect(self.open_diccionario)
         self.btn_logout.clicked.connect(self.logout)
 
         self._go(0, self.btn_perfil)  # Inicia en Mi Perfil
@@ -204,6 +207,14 @@ class SessionsWindow(QWidget):
         for btn in self._nav_btns:
             btn.setChecked(btn is active_btn)
         self.stack.setCurrentIndex(index)
+
+    def _open_evals(self):
+        old = self._page_evals
+        self._page_evals = self._build_scroll_page(self._build_evals_content)
+        self.stack.insertWidget(7, self._page_evals)
+        self.stack.removeWidget(old)
+        old.deleteLater()
+        self._go(7, self.btn_evals)
 
     # ── PÁGINA: SESIONES ──────────────────────────────────────
     def _build_page_sessions(self):
@@ -696,14 +707,32 @@ class SessionsWindow(QWidget):
     # ── ACCIONES ─────────────────────────────────────────────
     def populate_sessions(self):
         self.sessions_list.clear()
-        sessions = get_user_sessions(self.user_id)
-        if not sessions:
-            item = QListWidgetItem("  No hay sesiones anteriores.")
+        try:
+            import sqlite3 as _sq
+            conn = _sq.connect(get_database_name())
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT s.id, s.start_time, COUNT(i.id) as total
+                FROM sessions s
+                LEFT JOIN interpretations i ON s.id = i.session_id
+                WHERE s.user_id = ?
+                GROUP BY s.id
+                HAVING total > 0
+                ORDER BY s.start_time DESC
+            """, (self.user_id,))
+            rows = cur.fetchall()
+            conn.close()
+        except Exception:
+            rows = []
+
+        if not rows:
+            item = QListWidgetItem("  No hay sesiones con interpretaciones.")
             item.setForeground(Qt.gray)
             self.sessions_list.addItem(item)
         else:
-            for session_id, timestamp in sessions:
-                text = f"  📅  Sesión del {timestamp}" if timestamp and timestamp != "None" else "  📅  Sesión sin fecha"
+            for session_id, timestamp, total in rows:
+                fecha = str(timestamp)[:16] if timestamp and timestamp != "None" else "Sin fecha"
+                text = f"  📅  Sesión del {fecha}   ({total} gesto{'s' if total != 1 else ''})"
                 item = QListWidgetItem(text)
                 item.setData(Qt.UserRole, session_id)
                 self.sessions_list.addItem(item)
@@ -1023,6 +1052,17 @@ class SessionsWindow(QWidget):
 
             lay.addWidget(card)
 
+    def open_diccionario(self):
+        import os, subprocess
+        pdf = os.path.join(os.path.dirname(__file__), "resources", "Diccionario-lengua-de-senas.pdf")
+        if not os.path.exists(pdf):
+            QMessageBox.warning(self, "Diccionario", "No se encontró el archivo del diccionario.")
+            return
+        try:
+            os.startfile(pdf)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo abrir el diccionario:\n{str(e)}")
+
     def open_continuous_mode(self):
         self.btn_continuo.setChecked(True)
         try:
@@ -1048,6 +1088,8 @@ class SessionsWindow(QWidget):
         try:
             from evaluation_mode_window import EvaluationModeWindow
             self._eval_window = EvaluationModeWindow(self.user_id, self.controller)
+            self._eval_window.setAttribute(Qt.WA_DeleteOnClose)
+            self._eval_window.destroyed.connect(self._open_evals)
             self._eval_window.show()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo abrir el modo evaluación:\n{str(e)}")

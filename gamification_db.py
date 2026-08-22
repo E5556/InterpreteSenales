@@ -529,7 +529,7 @@ def save_evaluation_result(user_id, score_pct, correct, total, results):
     db.execute_query(
         "INSERT INTO evaluation_results (user_id, score_pct, correct, total, details) VALUES (?,?,?,?,?)",
         (user_id, score_pct, correct, total, json.dumps(
-            [{"word": w, "pred": p, "ok": ok, "conf": round(c, 4)} for w, p, ok, c in results]
+            [{"word": w, "pred": p, "ok": bool(ok), "conf": round(float(c), 4)} for w, p, ok, c in results]
         ))
     )
 

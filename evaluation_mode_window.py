@@ -408,7 +408,7 @@ class EvaluationModeWindow(QWidget):
         correct = (predicted == word)
         conf = self._last_confidence
 
-        self._results.append((word, predicted, correct, conf))
+        self._results.append((word, predicted, correct, float(conf)))
 
         if correct:
             self.result_lbl.setText(f"✅ ¡Correcto! ({int(conf*100)}%)")
@@ -430,18 +430,19 @@ class EvaluationModeWindow(QWidget):
         total = len(self._results)
         score_pct = int(correct_count / total * 100) if total > 0 else 0
 
+        print(f"[EvalMode] _finish_evaluation: user_id={self.user_id}, total={total}, correct={correct_count}, score={score_pct}%")
+        print(f"[EvalMode] results={self._results}")
+
         self._show_results_screen(correct_count, total, score_pct)
-        # Guardar en BD en background
+        # Guardar en BD
         try:
-            import threading
             from gamification_db import save_evaluation_result
-            threading.Thread(
-                target=save_evaluation_result,
-                args=(self.user_id, score_pct, correct_count, total, self._results),
-                daemon=True
-            ).start()
-        except Exception:
-            pass
+            save_evaluation_result(self.user_id, score_pct, correct_count, total, self._results)
+            print(f"[EvalMode] Guardado OK")
+        except Exception as e:
+            import traceback
+            print(f"[EvalMode] Error guardando evaluacion: {e}")
+            traceback.print_exc()
 
     def _show_results_screen(self, correct, total, pct):
         # Rango de puntaje → tema visual

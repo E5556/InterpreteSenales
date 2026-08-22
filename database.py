@@ -198,16 +198,18 @@ def create_session(user_id):
     cursor.execute("PRAGMA table_info(sessions)")
     columns = [col[1] for col in cursor.fetchall()]
     
+    now_local = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if 'session_type_id' in columns:
-        # Base de datos expandida
         cursor.execute("""
-            INSERT INTO sessions 
-            (user_id, session_type_id, start_time, completion_status) 
-            VALUES (?, ?, CURRENT_TIMESTAMP, 'started')
-        """, (user_id, 1))  # session_type_id = 1 para sesión básica
+            INSERT INTO sessions
+            (user_id, session_type_id, start_time, completion_status)
+            VALUES (?, ?, ?, 'started')
+        """, (user_id, 1, now_local))
     else:
-        # Base de datos original
-        cursor.execute("INSERT INTO sessions (user_id) VALUES (?)", (user_id,))
+        if 'start_time' in columns:
+            cursor.execute("INSERT INTO sessions (user_id, start_time) VALUES (?, ?)", (user_id, now_local))
+        else:
+            cursor.execute("INSERT INTO sessions (user_id) VALUES (?)", (user_id,))
     
     session_id = cursor.lastrowid
     conn.commit()
@@ -222,12 +224,13 @@ def add_interpretation(session_id, word, confidence=None):
     cursor.execute("PRAGMA table_info(interpretations)")
     columns = [col[1] for col in cursor.fetchall()]
 
+    now_local = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if 'word_detected' in columns:
         cursor.execute("""
             INSERT INTO interpretations
             (session_id, word_detected, confidence_score, timestamp)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        """, (session_id, word, confidence))
+            VALUES (?, ?, ?, ?)
+        """, (session_id, word, confidence, now_local))
     else:
         cursor.execute("INSERT INTO interpretations (session_id, word) VALUES (?, ?)", (session_id, word))
 

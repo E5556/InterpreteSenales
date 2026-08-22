@@ -39,7 +39,7 @@ def _lbl(text, size=13, bold=False, color=C_DARK, wrap=False):
 
 class ModelQualityWindow(QWidget):
     def __init__(self, parent=None):
-        super().__init__(parent)
+        super().__init__()
         self.setWindowTitle("Calidad del Modelo — Admin")
         self.setGeometry(200, 80, 860, 640)
         self.setMinimumSize(720, 520)

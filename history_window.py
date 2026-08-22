@@ -193,11 +193,20 @@ class HistoryWindow(QWidget):
             self.table.setItem(i, 1, word_item)
 
             if conf is not None:
-                pct = int(float(conf) * 100)
-                conf_item = QTableWidgetItem(f"{pct}%")
-                conf_item.setTextAlignment(Qt.AlignCenter)
-                conf_item.setForeground(QColor(C_SUCCESS if pct >= 80 else (C_MUTED if pct >= 60 else C_DANGER)))
-                self.table.setItem(i, 2, conf_item)
+                try:
+                    import struct
+                    if isinstance(conf, (bytes, bytearray)):
+                        conf = struct.unpack('f', conf)[0]
+                    pct = int(float(conf) * 100)
+                except Exception:
+                    pct = None
+                if pct is not None:
+                    conf_item = QTableWidgetItem(f"{pct}%")
+                    conf_item.setTextAlignment(Qt.AlignCenter)
+                    conf_item.setForeground(QColor(C_SUCCESS if pct >= 80 else (C_MUTED if pct >= 60 else C_DANGER)))
+                    self.table.setItem(i, 2, conf_item)
+                else:
+                    self.table.setItem(i, 2, QTableWidgetItem("—"))
             else:
                 self.table.setItem(i, 2, QTableWidgetItem("—"))
 
@@ -208,7 +217,15 @@ class HistoryWindow(QWidget):
 
         # Resumen
         total = len(self._interpretations)
-        confs = [float(c) for _, c, _ in self._interpretations if c is not None]
+        def _safe_float(c):
+            try:
+                import struct
+                if isinstance(c, (bytes, bytearray)):
+                    c = struct.unpack('f', c)[0]
+                return float(c)
+            except Exception:
+                return None
+        confs = [v for _, c, _ in self._interpretations if c is not None for v in [_safe_float(c)] if v is not None]
         avg_conf = sum(confs) / len(confs) * 100 if confs else 0
         gestos_unicos = len({w for w, _, _ in self._interpretations})
         self.summary_lbl.setText(
@@ -257,8 +274,14 @@ class HistoryWindow(QWidget):
         story.append(HRFlowable(width="100%", thickness=1, color=accent, spaceAfter=12))
 
         # Resumen
+        def _sf(c):
+            try:
+                import struct
+                if isinstance(c, (bytes, bytearray)): c = struct.unpack('f', c)[0]
+                return float(c)
+            except Exception: return None
         total  = len(self._interpretations)
-        confs  = [float(c) for _, c, _ in self._interpretations if c is not None]
+        confs  = [v for _, c, _ in self._interpretations if c is not None for v in [_sf(c)] if v is not None]
         avg_c  = sum(confs) / len(confs) * 100 if confs else 0
         unicos = len({w for w, _, _ in self._interpretations})
         story.append(Paragraph(f"<b>Total interpretaciones:</b> {total}  &nbsp;&nbsp; <b>Gestos distintos:</b> {unicos}" +
@@ -268,7 +291,7 @@ class HistoryWindow(QWidget):
         # Tabla
         data = [["#", "Seña", "Confianza", "Hora"]]
         for i, (word, conf, ts) in enumerate(self._interpretations):
-            pct_str = f"{int(float(conf)*100)}%" if conf is not None else "—"
+            pct_str = f"{int(_sf(conf)*100)}%" if conf is not None and _sf(conf) is not None else "—"
             ts_str  = str(ts)[11:19] if ts else "—"
             data.append([str(i+1), word or "—", pct_str, ts_str])
 

@@ -122,8 +122,16 @@ class ContinuousModeWindow(QWidget):
         # Gestos registrados (para BD al cerrar)
         self._session_log = []  # [(word, confidence)]
 
+        self._model_ready = False  # flag seteado por hilo background
+        self._load_error  = None
+
         self._build_ui()
         threading.Thread(target=self._load_model, daemon=True).start()
+
+        # Timer de polling en hilo principal: espera hasta que modelo esté listo
+        self._poll_timer = QTimer(self)
+        self._poll_timer.timeout.connect(self._check_model_ready)
+        self._poll_timer.start(200)
 
     # ── UI ────────────────────────────────────────────────────────
 
@@ -303,11 +311,12 @@ class ContinuousModeWindow(QWidget):
     # ── CARGA DE MODELO ───────────────────────────────────────────
 
     def _load_model(self):
+        error_msg = None
         try:
             import mediapipe as mp
             import tensorflow as tf
             from constants import MODEL_PATH, MODEL_FRAMES
-            from helpers import get_gestures_with_valid_keypoints
+            from training_utils import get_gestures_with_valid_keypoints
             from prediction_filter import PredictionFilter
 
             self._holistic = mp.solutions.holistic.Holistic(
@@ -317,18 +326,34 @@ class ContinuousModeWindow(QWidget):
             self._model    = tf.keras.models.load_model(MODEL_PATH)
             self._word_ids = get_gestures_with_valid_keypoints()
             self._rolling_size = MODEL_FRAMES
-
             self._pred_filter = PredictionFilter(window_size=3, confidence_threshold=0.70)
 
             self._capture = cv2.VideoCapture(0)
             self._capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
             self._capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-            self._timer = QTimer(self)
-            self._timer.timeout.connect(self._update_frame)
-            self._timer.start(33)  # ~30 fps
+            self._model_ready = True
         except Exception as e:
-            self.video_label.setText(f"Error al cargar:\n{str(e)}")
+            error_msg = str(e)
+            print(f"[ContinuousMode] Error al cargar: {error_msg}")
+
+        # Actualizar UI solo desde el hilo principal via _check_model_ready
+        if error_msg:
+            self._load_error = error_msg
+
+    def _check_model_ready(self):
+        if getattr(self, '_load_error', None):
+            self._poll_timer.stop()
+            self.video_label.setText(f"Error al cargar:\n{self._load_error}")
+        elif self._model_ready:
+            self._poll_timer.stop()
+            self._start_timer()
+
+    def _start_timer(self):
+        self._timer = QTimer(self)
+        self._timer.timeout.connect(self._update_frame)
+        self._timer.start(33)
+        self.video_label.setText("")
 
     # ── LOOP DE CAPTURA ───────────────────────────────────────────
 
@@ -379,7 +404,8 @@ class ContinuousModeWindow(QWidget):
             kp_norm = _normalize_keypoints(self._rolling_buf, self._rolling_size)
             pred    = self._model.predict(np.expand_dims(kp_norm, axis=0), verbose=0)[0]
             gesture_name, confidence = self._pred_filter.add_prediction(pred, self._word_ids)
-            pct = int((confidence or 0) * 100)
+            confidence = float(confidence) if confidence is not None else 0.0
+            pct = int(confidence * 100)
 
             # Actualizar barra de confianza siempre
             self.conf_bar.setValue(pct)
@@ -426,7 +452,7 @@ class ContinuousModeWindow(QWidget):
         self._total_gestos += 1
         self._conf_sum += confidence
         self._gesture_counts[word_upper] = self._gesture_counts.get(word_upper, 0) + 1
-        self._session_log.append((word_upper, confidence))
+        self._session_log.append((word_upper, float(confidence)))
 
         avg_pct = int(self._conf_sum / self._total_gestos * 100)
         self.lbl_total.setText(f"{self._total_gestos} gesto{'s' if self._total_gestos != 1 else ''} reconocido{'s' if self._total_gestos != 1 else ''}")
@@ -497,7 +523,7 @@ class ContinuousModeWindow(QWidget):
                 from constants import get_database_name
                 session_id = create_session(self.user_id)
                 for word, conf in self._session_log:
-                    add_interpretation(session_id, word, conf)
+                    add_interpretation(session_id, word, float(conf))
             except Exception:
                 pass
 

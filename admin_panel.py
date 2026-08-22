@@ -152,12 +152,14 @@ class AdminPanel(QWidget):
         self.btn_analytics = SidebarButton("🔍", "Analíticas globales")
         self.btn_quality   = SidebarButton("🧪", "Calidad del modelo")
         self.btn_gestures  = SidebarButton("🤲", "Gestionar Gestos")
-        self.btn_learning  = SidebarButton("🎓", "Modo Aprendizaje")
+        self.btn_learning     = SidebarButton("🎓", "Modo Aprendizaje")
+        self.btn_diccionario  = SidebarButton("📖", "Diccionario LSC")
         layout.addWidget(self.btn_stats)
         layout.addWidget(self.btn_analytics)
         layout.addWidget(self.btn_quality)
         layout.addWidget(self.btn_gestures)
         layout.addWidget(self.btn_learning)
+        layout.addWidget(self.btn_diccionario)
 
         layout.addSpacing(12)
         sep2 = QFrame()
@@ -193,6 +195,7 @@ class AdminPanel(QWidget):
         self.btn_quality.clicked.connect(self.handle_show_model_quality)
         self.btn_gestures.clicked.connect(self.handle_manage_gestures)
         self.btn_learning.clicked.connect(self.handle_learning_mode)
+        self.btn_diccionario.clicked.connect(self.handle_open_diccionario)
         self.btn_sessions.clicked.connect(self.handle_view_sessions)
         self.btn_logout.clicked.connect(self.logout)
 
@@ -468,6 +471,17 @@ class AdminPanel(QWidget):
     def handle_learning_mode(self):
         self.controller.show_learning_mode()
 
+    def handle_open_diccionario(self):
+        import os
+        pdf = os.path.join(os.path.dirname(__file__), "resources", "Diccionario-lengua-de-senas.pdf")
+        if not os.path.exists(pdf):
+            QMessageBox.warning(self, "Diccionario", "No se encontró el archivo del diccionario.")
+            return
+        try:
+            os.startfile(pdf)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo abrir el diccionario:\n{str(e)}")
+
     def handle_show_statistics(self):
         try:
             show_integrated_statistics()
@@ -477,7 +491,7 @@ class AdminPanel(QWidget):
     def handle_show_analytics(self):
         try:
             from analytics_window import AnalyticsWindow
-            self._analytics_win = AnalyticsWindow(self)
+            self._analytics_win = AnalyticsWindow()
             self._analytics_win.show()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo abrir analíticas:\n{e}")
@@ -485,7 +499,7 @@ class AdminPanel(QWidget):
     def handle_show_model_quality(self):
         try:
             from model_quality_window import ModelQualityWindow
-            self._quality_win = ModelQualityWindow(self)
+            self._quality_win = ModelQualityWindow()
             self._quality_win.show()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo abrir calidad del modelo:\n{e}")

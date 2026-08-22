@@ -54,7 +54,7 @@ def _card(parent_lay, title, value, subtitle="", accent=C_ACCENT):
 
 class AnalyticsWindow(QWidget):
     def __init__(self, parent=None):
-        super().__init__(parent)
+        super().__init__()
         self.setWindowTitle("Analíticas Globales — Admin")
         self.setGeometry(200, 80, 900, 680)
         self.setMinimumSize(780, 560)
